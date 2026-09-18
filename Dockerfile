@@ -5,8 +5,10 @@ RUN corepack enable
 # 国内网络加速：pnpm 走 npmmirror；better-sqlite3 预编译二进制也指到 npmmirror
 RUN pnpm config set registry https://registry.npmmirror.com/
 ENV npm_config_better_sqlite3_binary_host=https://registry.npmmirror.com/-/binary/better-sqlite3
-# node-gyp 兜底工具链（镜像源不可用时本地编译 sqlite）
-RUN apt-get update && apt-get install -y --no-install-recommends python3 make g++ && rm -rf /var/lib/apt/lists/*
+# node-gyp 兜底工具链（镜像源不可用时本地编译 sqlite）；apt 换腾讯内网源
+RUN sed -i 's|deb.debian.org|mirrors.cloud.tencent.com|g' /etc/apt/sources.list.d/debian.sources 2>/dev/null; \
+    sed -i 's|deb.debian.org|mirrors.cloud.tencent.com|g' /etc/apt/sources.list 2>/dev/null; \
+    apt-get update && apt-get install -y --no-install-recommends python3 make g++ && rm -rf /var/lib/apt/lists/*
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 RUN pnpm install --frozen-lockfile
 COPY . .
