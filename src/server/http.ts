@@ -3,11 +3,14 @@ import path from 'node:path'
 import { Hono } from 'hono'
 import { serve } from '@hono/node-server'
 import { serveStatic } from '@hono/node-server/serve-static'
+import { publicAuthRouter } from './routes/auth.js'
+import { authGuard, guardedRouter } from './routes/guarded.js'
+import type { ServerDeps } from './types.js'
 
 export const SERVER_VERSION = '0.1.0'
 const WEB_DIST_DIR = path.resolve('dist/web')
 
-export function createApp(): Hono {
+export function createApp(deps: ServerDeps): Hono {
   const app = new Hono()
 
   app.onError((err, c) => {
@@ -17,13 +20,21 @@ export function createApp(): Hono {
 
   app.get('/healthz', (c) => c.json({ ok: true, version: SERVER_VERSION }))
 
-  // /api/* 由后续工单挂载；未匹配的 /api 一律 JSON 404，绝不能落进 SPA 兜底
+  // 注册顺序即语义：公开认证路由 → /api/* 鉴权守卫 → 受保护 API → SPA 兜底
+  app.route('/', publicAuthRouter(deps))
+  app.use('/api/*', authGuard(deps))
+  app.route('/', guardedRouter(deps))
+
+  // /api 未匹配的走 JSON 404，绝不落进 SPA 兜底
   app.notFound((c) => {
     if (c.req.path.startsWith('/api')) return c.json({ error: 'not found' }, 404)
     if (fs.existsSync(path.join(WEB_DIST_DIR, 'index.html'))) {
       return c.html(fs.readFileSync(path.join(WEB_DIST_DIR, 'index.html'), 'utf8'))
     }
-    return c.text('CortxtOS daemon 运行中。前端产物未构建：先执行 pnpm build（开发模式用 pnpm dev:web 走 Vite 5173）。', 200)
+    return c.text(
+      'CortxtOS daemon 运行中。前端产物未构建：先执行 pnpm build（开发模式用 pnpm dev:web 走 Vite 5173）。',
+      200,
+    )
   })
 
   if (fs.existsSync(WEB_DIST_DIR)) {

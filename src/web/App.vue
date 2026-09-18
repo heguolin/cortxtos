@@ -1,34 +1,44 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
+import LoginView from './views/LoginView.vue'
+import SettingsView from './views/SettingsView.vue'
+import PlaceholderView from './views/PlaceholderView.vue'
 
-interface Health {
-  ok: boolean
-  version: string
-}
+type Authed = boolean | null
 
-const health = ref<Health | null>(null)
-const healthError = ref(false)
+const authed = ref<Authed>(null)
+const view = ref('chat')
+const healthVersion = ref('')
 
 const nav = [
-  { key: 'chat', label: '对话', hint: '工单 06' },
-  { key: 'kb', label: '知识库', hint: '工单 03' },
-  { key: 'briefing', label: '简报', hint: '工单 07' },
-  { key: 'settings', label: '设置', hint: '工单 02' },
+  { key: 'chat', label: '对话', title: '对话', ticket: '工单 06' },
+  { key: 'kb', label: '知识库', title: '知识库', ticket: '工单 03' },
+  { key: 'briefing', label: '简报', title: '简报', ticket: '工单 07' },
+  { key: 'settings', label: '设置', title: '设置', ticket: '' },
 ]
+
+const activeTitle = () => nav.find((n) => n.key === view.value) ?? nav[0]!
 
 onMounted(async () => {
   try {
-    const res = await fetch('/healthz')
-    health.value = res.ok ? ((await res.json()) as Health) : null
-    healthError.value = !res.ok
+    const [hRes, meRes] = await Promise.all([fetch('/healthz'), fetch('/api/auth/me')])
+    healthVersion.value = hRes.ok ? ((await hRes.json()) as { version: string }).version : ''
+    authed.value = meRes.ok
   } catch {
-    healthError.value = true
+    authed.value = null
   }
 })
+
+async function logout() {
+  await fetch('/api/auth/logout', { method: 'POST' })
+  authed.value = false
+}
 </script>
 
 <template>
-  <div class="flex h-full">
+  <LoginView v-if="authed === false" @done="authed = true" />
+
+  <div v-else-if="authed === true" class="flex h-full">
     <aside class="flex w-56 shrink-0 flex-col border-r border-edge bg-panel">
       <div class="px-5 py-5">
         <h1 class="text-lg font-bold tracking-wide text-ink">
@@ -37,30 +47,34 @@ onMounted(async () => {
         <p class="mt-1 text-xs text-ink-dim">自托管个人 AI 工作台</p>
       </div>
       <nav class="flex-1 space-y-1 px-3">
-        <div
+        <button
           v-for="item in nav"
           :key="item.key"
-          class="flex items-center justify-between rounded-lg px-3 py-2 text-sm text-ink-dim"
+          class="w-full rounded-lg px-3 py-2 text-left text-sm transition"
+          :class="view === item.key ? 'bg-neon/15 text-neon' : 'text-ink-dim hover:text-ink'"
+          @click="view = item.key"
         >
-          <span>{{ item.label }}</span>
-          <span class="text-[10px] text-edge">{{ item.hint }}</span>
-        </div>
+          {{ item.label }}
+        </button>
       </nav>
-      <div class="border-t border-edge px-5 py-4 text-xs">
-        <span v-if="health" class="text-neon-soft">daemon v{{ health.version }} · 在线</span>
-        <span v-else-if="healthError" class="text-red-400">daemon 未连接</span>
-        <span v-else class="text-ink-dim">连接中…</span>
+      <div class="space-y-2 border-t border-edge px-5 py-4 text-xs">
+        <div>
+          <span v-if="healthVersion" class="text-neon-soft">daemon v{{ healthVersion }} · 在线</span>
+          <span v-else class="text-red-400">daemon 未连接</span>
+        </div>
+        <button class="text-ink-dim transition hover:text-ink" @click="logout">登出</button>
       </div>
     </aside>
 
     <main class="flex-1 overflow-auto p-8">
-      <div class="mx-auto max-w-2xl rounded-2xl border border-edge bg-panel p-8">
-        <h2 class="text-xl font-bold">骨架已就绪</h2>
-        <p class="mt-3 text-sm leading-6 text-ink-dim">
-          票 01 完成后，这里会依次长出：登录（02）→ 知识库（03/04）→
-          检索问答（05/06）→ 每日简报（07）→ 深色霓虹主题定稿（08）。
-        </p>
-      </div>
+      <SettingsView v-if="view === 'settings'" @changed="authed = false" />
+      <PlaceholderView
+        v-else
+        :title="activeTitle().title"
+        :ticket="activeTitle().ticket"
+      />
     </main>
   </div>
+
+  <div v-else class="grid h-full place-items-center text-ink-dim">连接中…</div>
 </template>
