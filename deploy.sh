@@ -7,10 +7,28 @@ set -euo pipefail
 APP_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$APP_DIR"
 
-echo "==> [1/6] 安装 Docker（官方源，已装则跳过）"
+echo "==> [1/6] 安装 Docker（国内镜像源优先，已装则跳过）"
 if ! command -v docker >/dev/null 2>&1; then
   dnf -y install dnf-plugins-core
-  dnf -y config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo
+  REPO_OK=0
+  for REPO_URL in \
+    https://mirrors.aliyun.com/docker-ce/linux/centos/docker-ce.repo \
+    https://mirrors.tuna.tsinghua.edu.cn/docker-ce/linux/centos/docker-ce.repo \
+    https://download.docker.com/linux/centos/docker-ce.repo; do
+    echo "尝试仓库源: $REPO_URL"
+    if dnf -y config-manager --add-repo "$REPO_URL" 2>/dev/null; then
+      # docker-ce.repo 里的下载地址同步替换成对应镜像
+      MIRROR_HOST="$(echo "$REPO_URL" | sed -E 's|https://([^/]+)/.*|\1|')"
+      case "$MIRROR_HOST" in
+        mirrors.aliyun.com) sed -i 's|download.docker.com|mirrors.aliyun.com/docker-ce|g' /etc/yum.repos.d/docker-ce.repo ;;
+        mirrors.tuna.tsinghua.edu.cn) sed -i 's|download.docker.com|mirrors.tuna.tsinghua.edu.cn/docker-ce|g' /etc/yum.repos.d/docker-ce.repo ;;
+      esac
+      REPO_OK=1
+      break
+    fi
+    rm -f /etc/yum.repos.d/docker-ce.repo
+  done
+  [ "$REPO_OK" = "1" ] || { echo "所有 docker-ce 仓库源均不可达"; exit 1; }
   dnf -y install docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
   systemctl enable --now docker
 fi
