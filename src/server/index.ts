@@ -61,10 +61,11 @@ async function boot(): Promise<void> {
     console.warn('[cortxt] 告警: 未配置 LLM_BASE_URL —— 对话/嵌入在配置前将显式报错（不影响启动）')
   }
 
+  const embedder = createEmbedderFromEnv(config.models.embedding)
   const indexer = new Indexer(
     db,
     layout.vaultDir,
-    createEmbedderFromEnv(config.models.embedding),
+    embedder,
     config.models.embedding.dimensions,
   )
   indexer.recover()
@@ -75,6 +76,7 @@ async function boot(): Promise<void> {
     rateLimiter: new LoginRateLimiter(),
     vaultDir: layout.vaultDir,
     indexer,
+    embedder,
   })
   startServer(app, config.server.port)
 }

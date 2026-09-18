@@ -172,3 +172,42 @@ export function saveMarkdownEdit(
   })()
   return getDocument(db, id)!
 }
+
+/**
+ * 全量重建（ADR 0003：Vault 是真相源，索引是派生物）：
+ * 1) 收编孤儿文件（Vault 里有但库里没有的）——直接登记现有文件，不重写不改名
+ * 2) 清空全部派生索引、状态回 queued
+ * 返回待索引文档数。入队由调用方经 Indexer.recover() 完成。
+ */
+export function reindexAll(db: DB, vaultDir: string): number {
+  const known = new Set(
+    (db.prepare('SELECT source FROM documents').all() as { source: string }[]).map((r) => r.source),
+  )
+  let orphans = 0
+  for (const name of fs.readdirSync(vaultDir)) {
+    const full = path.join(vaultDir, name)
+    if (!fs.statSync(full).isFile() || known.has(name)) continue
+    if (registerOrphan(db, full, name)) orphans++
+  }
+  const rows = db.prepare('SELECT id FROM documents').all() as { id: number }[]
+  for (const r of rows) {
+    clearDerivedIndex(db, r.id)
+    db.prepare("UPDATE documents SET status = 'queued', error = NULL WHERE id = ?").run(r.id)
+  }
+  if (orphans > 0) console.log(`[kb] reindex: 收编 ${orphans} 个孤儿文件`)
+  return rows.length
+}
+
+/** 登记 Vault 里已存在但未入库的文件（不复制不改名）；sha 撞车 / 类型或大小不合规则跳过 */
+function registerOrphan(db: DB, fullPath: string, name: string): boolean {
+  const mime = ALLOWED[path.extname(name).toLowerCase()]
+  if (!mime) return false
+  const bytes = fs.readFileSync(fullPath)
+  if (bytes.byteLength === 0 || bytes.byteLength > MAX_UPLOAD_BYTES) return false
+  const sha = sha256Of(bytes)
+  if (db.prepare('SELECT id FROM documents WHERE sha256 = ?').get(sha)) return true
+  db.prepare(
+    "INSERT INTO documents(title, source, mime, sha256, size, status) VALUES (?, ?, ?, ?, ?, 'queued')",
+  ).run(name, name, mime, sha, bytes.byteLength)
+  return true
+}

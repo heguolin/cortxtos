@@ -5,9 +5,11 @@ import {
   getDocument,
   listDocuments,
   readDocumentFile,
+  reindexAll,
   saveMarkdownEdit,
   uploadDocument,
 } from '../kb/service.js'
+import { hybridSearch } from '../kb/search.js'
 import type { ServerDeps } from '../types.js'
 
 export function kbRouter(deps: ServerDeps): Hono {
@@ -68,6 +70,26 @@ export function kbRouter(deps: ServerDeps): Hono {
     if (!deps.indexer) throw new KbError(503, '索引器未就绪（测试环境）')
     deps.indexer.enqueue(id)
     return c.json({ ok: true, queued: true }, 202)
+  })
+
+  // 全量重建：收编孤儿文件 + 全部回 queued + 入队（票 05）
+  r.post('/api/documents/reindex-all', (c) => {
+    if (!deps.indexer) throw new KbError(503, '索引器未就绪（测试环境）')
+    const count = reindexAll(deps.db, deps.vaultDir)
+    deps.indexer.recover()
+    return c.json({ ok: true, queued: count }, 202)
+  })
+
+  // 检索测试口（票 06 的对话固定管线复用同一函数）
+  r.get('/api/search', async (c) => {
+    const q = c.req.query('q')?.trim() ?? ''
+    if (!q) throw new KbError(400, '缺少 q 参数')
+    if (!deps.embedder) throw new KbError(503, '嵌入客户端未就绪（测试环境）')
+    const limit = Number(c.req.query('limit') ?? 6)
+    const hits = await hybridSearch(deps.db, deps.embedder, q, {
+      limit: Number.isFinite(limit) && limit > 0 ? Math.min(limit, 20) : 6,
+    })
+    return c.json({ hits })
   })
 
   r.delete('/api/documents/:id', (c) => {
