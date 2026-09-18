@@ -1,6 +1,5 @@
 import { stream as openaiCompletionsStream } from '@earendil-works/pi-ai/api/openai-completions'
 import type { Context, Model } from '@earendil-works/pi-ai'
-import type { ModelProfile } from '../config.js'
 
 /**
  * ADR 0002：Pi SDK 作为 LLM 调用底座。M0 固定管线直接用 pi-ai 的
@@ -10,7 +9,7 @@ import type { ModelProfile } from '../config.js'
 
 export type ChatModel = Model<'openai-completions'>
 
-export function buildChatModel(profile: ModelProfile): ChatModel {
+export function buildChatModel(profile: { model: string; baseUrl?: string }): ChatModel {
   const baseUrl = (profile.baseUrl ?? process.env.LLM_BASE_URL ?? '').replace(/\/+$/, '')
   return {
     id: profile.model,

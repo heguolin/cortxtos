@@ -76,7 +76,7 @@ export function chatRouter(deps: ServerDeps): Hono {
             db: deps.db,
             embedder,
             chatModel,
-            apiKey: process.env.LLM_API_KEY,
+            apiKey: process.env[deps.chatApiKeyEnv ?? 'LLM_API_KEY'],
           },
           session.id,
           question,

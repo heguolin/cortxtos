@@ -50,6 +50,6 @@ export function createEmbedderFromEnv(profile: AppConfig['models']['embedding'])
   return new OpenAICompatibleEmbedder(
     profile.model,
     profile.baseUrl ?? process.env.LLM_BASE_URL,
-    process.env.LLM_API_KEY,
+    process.env[profile.apiKeyEnv],
   )
 }

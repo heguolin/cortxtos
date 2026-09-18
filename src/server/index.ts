@@ -82,7 +82,7 @@ async function boot(): Promise<void> {
         runBriefing(
           db,
           buildChatModel(config.models.background),
-          process.env.LLM_API_KEY,
+          process.env[config.models.background.apiKeyEnv],
           config.briefing.promptTemplate,
         ),
     ],
@@ -97,6 +97,7 @@ async function boot(): Promise<void> {
     indexer,
     embedder,
     chatModel: buildChatModel(config.models.primary),
+    chatApiKeyEnv: config.models.primary.apiKeyEnv,
     scheduler,
   })
   startServer(app, config.server.port)

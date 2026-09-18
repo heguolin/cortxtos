@@ -10,11 +10,14 @@ import { z } from 'zod'
 const modelProfileSchema = z.strictObject({
   model: z.string().min(1),
   baseUrl: z.url().optional(),
+  /** 该档位用的 key 存放的环境变量名（DESIGN §8：key 只存 .env，永不入库/下发） */
+  apiKeyEnv: z.string().min(1).default('LLM_API_KEY'),
 })
 
 const embeddingProfileSchema = z.strictObject({
   model: z.string().min(1),
   baseUrl: z.url().optional(),
+  apiKeyEnv: z.string().min(1).default('LLM_API_KEY'),
   dimensions: z.number().int().positive().max(4096).default(1024),
 })
 

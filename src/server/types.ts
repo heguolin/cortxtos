@@ -18,6 +18,8 @@ export interface ServerDeps {
   embedder?: EmbeddingClient
   /** 聊天主力模型（票 06）；测试环境可缺省 */
   chatModel?: ChatModel
+  /** 聊天档位读取 key 的环境变量名（key 只存 .env） */
+  chatApiKeyEnv?: string
   /** 调度器（票 07）；测试环境可缺省 */
   scheduler?: Scheduler
 }

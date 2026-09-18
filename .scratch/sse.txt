@@ -1,0 +1,30 @@
+event: citations
+data: {"citations":[{"n":1,"documentId":1,"title":"demo.md","page":null,"headingPath":"CortxtOS 知识"},{"n":2,"documentId":1,"title":"demo.md","page":null,"headingPath":"CortxtOS 知识 > 检索"}]}
+
+event: delta
+data: {"text":"CortxtOS"}
+
+event: delta
+data: {"text":" 是一个自托管的个人"}
+
+event: delta
+data: {"text":" AI 工作台 [1"}
+
+event: delta
+data: {"text":"]。它使用 SQLite F"}
+
+event: delta
+data: {"text":"TS5 与向量索引"}
+
+event: delta
+data: {"text":"做混合检索，并且"}
+
+event: delta
+data: {"text":"回答必须带出处引用 ["}
+
+event: delta
+data: {"text":"2]。"}
+
+event: done
+data: {"userMessage":{"id":1,"session_id":1,"role":"user","content":"CortxtOS ��ʲô����ϼ������ش�Ҫ������","citations":[],"model":null,"usage":null,"created_at":"2026-09-18 14:02:38"},"assistantMessage":{"id":2,"session_id":1,"role":"assistant","content":"CortxtOS 是一个自托管的个人 AI 工作台 [1]。它使用 SQLite FTS5 与向量索引做混合检索，并且回答必须带出处引用 [2]。","citations":[{"n":1,"documentId":1,"title":"demo.md","page":null,"headingPath":"CortxtOS 知识"},{"n":2,"documentId":1,"title":"demo.md","page":null,"headingPath":"CortxtOS 知识 > 检索"}],"model":"deepseek-v4-pro-0813","usage":{"promptTokens":263,"completionTokens":343},"created_at":"2026-09-18 14:02:50"}}
+
