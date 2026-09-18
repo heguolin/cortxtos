@@ -4,7 +4,7 @@ WORKDIR /app
 RUN corepack enable
 # 国内网络加速：pnpm 走 npmmirror
 RUN pnpm config set registry https://registry.npmmirror.com/
-COPY package.json pnpm-lock.yaml ./
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 RUN pnpm install --frozen-lockfile
 COPY . .
 RUN pnpm build
