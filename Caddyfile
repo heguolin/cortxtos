@@ -1,0 +1,4 @@
+{$CORTEXT_DOMAIN} {
+	encode gzip
+	reverse_proxy app:3000
+}

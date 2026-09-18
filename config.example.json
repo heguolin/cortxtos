@@ -1,0 +1,10 @@
+{
+  "server": { "port": 3000 },
+  "models": {
+    "primary": { "model": "deepseek-v4-pro-0813" },
+    "background": { "model": "deepseek-v4-flash-0731" },
+    "vision": { "model": "qwen3.8-flash" },
+    "embedding": { "model": "bge-m3", "dimensions": 1024 }
+  },
+  "briefing": { "schedule": "08:00" }
+}

@@ -1,0 +1,29 @@
+@import 'tailwindcss';
+
+/* CortxtOS 深色霓虹 · 基础色板（完整主题在票 08 由视觉稿定稿） */
+@theme {
+  --color-void: #0b0713;
+  --color-panel: #141021;
+  --color-panel-2: #1b1530;
+  --color-edge: #2c2050;
+  --color-neon: #f26bff;
+  --color-neon-soft: #9d7bff;
+  --color-ink: #efe9ff;
+  --color-ink-dim: #8f86ad;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  background-color: var(--color-void);
+  color: var(--color-ink);
+  font-family:
+    'PingFang SC',
+    'Microsoft YaHei',
+    system-ui,
+    -apple-system,
+    sans-serif;
+}
