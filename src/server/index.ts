@@ -6,6 +6,7 @@ import { migrate } from './migrations.js'
 import { purgeExpiredSessions, seedPasswordFromEnv } from './auth/service.js'
 import { LoginRateLimiter } from './auth/ratelimit.js'
 import { createEmbedderFromEnv } from './llm/embedder.js'
+import { buildChatModel } from './llm/chat.js'
 import { Indexer } from './kb/indexer.js'
 import { createApp, startServer } from './http.js'
 import { dirLayout, resolveDataDir } from './paths.js'
@@ -77,6 +78,7 @@ async function boot(): Promise<void> {
     vaultDir: layout.vaultDir,
     indexer,
     embedder,
+    chatModel: buildChatModel(config.models.primary),
   })
   startServer(app, config.server.port)
 }

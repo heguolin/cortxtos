@@ -6,6 +6,7 @@ import { serveStatic } from '@hono/node-server/serve-static'
 import { publicAuthRouter } from './routes/auth.js'
 import { authGuard, guardedRouter } from './routes/guarded.js'
 import { kbRouter } from './routes/kb.js'
+import { chatRouter } from './routes/chat.js'
 import type { ServerDeps } from './types.js'
 
 export const SERVER_VERSION = '0.1.0'
@@ -26,6 +27,7 @@ export function createApp(deps: ServerDeps): Hono {
   app.use('/api/*', authGuard(deps))
   app.route('/', guardedRouter(deps))
   app.route('/', kbRouter(deps))
+  app.route('/', chatRouter(deps))
 
   // /api 未匹配的走 JSON 404，绝不落进 SPA 兜底
   app.notFound((c) => {

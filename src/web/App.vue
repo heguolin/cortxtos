@@ -4,6 +4,7 @@ import LoginView from './views/LoginView.vue'
 import SettingsView from './views/SettingsView.vue'
 import PlaceholderView from './views/PlaceholderView.vue'
 import KnowledgeView from './views/KnowledgeView.vue'
+import ChatView from './views/ChatView.vue'
 
 type Authed = boolean | null
 
@@ -68,7 +69,8 @@ async function logout() {
     </aside>
 
     <main class="flex-1 overflow-auto p-8">
-      <SettingsView v-if="view === 'settings'" @changed="authed = false" />
+      <ChatView v-if="view === 'chat'" />
+      <SettingsView v-else-if="view === 'settings'" @changed="authed = false" />
       <KnowledgeView v-else-if="view === 'kb'" />
       <PlaceholderView v-else :title="activeTitle().title" :ticket="activeTitle().ticket" />
     </main>

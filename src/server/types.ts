@@ -3,6 +3,7 @@ import type { AppConfig } from './config.js'
 import type { LoginRateLimiter } from './auth/ratelimit.js'
 import type { Indexer } from './kb/indexer.js'
 import type { EmbeddingClient } from './llm/embedder.js'
+import type { ChatModel } from './llm/chat.js'
 
 export interface ServerDeps {
   db: DB
@@ -14,4 +15,6 @@ export interface ServerDeps {
   indexer?: Indexer
   /** 查询侧嵌入客户端（票 05 检索 / 票 06 对话）；测试环境可缺省 */
   embedder?: EmbeddingClient
+  /** 聊天主力模型（票 06）；测试环境可缺省 */
+  chatModel?: ChatModel
 }
