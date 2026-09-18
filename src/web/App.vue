@@ -3,6 +3,7 @@ import { onMounted, ref } from 'vue'
 import LoginView from './views/LoginView.vue'
 import SettingsView from './views/SettingsView.vue'
 import PlaceholderView from './views/PlaceholderView.vue'
+import KnowledgeView from './views/KnowledgeView.vue'
 
 type Authed = boolean | null
 
@@ -12,7 +13,7 @@ const healthVersion = ref('')
 
 const nav = [
   { key: 'chat', label: '对话', title: '对话', ticket: '工单 06' },
-  { key: 'kb', label: '知识库', title: '知识库', ticket: '工单 03' },
+  { key: 'kb', label: '知识库', title: '', ticket: '' },
   { key: 'briefing', label: '简报', title: '简报', ticket: '工单 07' },
   { key: 'settings', label: '设置', title: '设置', ticket: '' },
 ]
@@ -68,11 +69,8 @@ async function logout() {
 
     <main class="flex-1 overflow-auto p-8">
       <SettingsView v-if="view === 'settings'" @changed="authed = false" />
-      <PlaceholderView
-        v-else
-        :title="activeTitle().title"
-        :ticket="activeTitle().ticket"
-      />
+      <KnowledgeView v-else-if="view === 'kb'" />
+      <PlaceholderView v-else :title="activeTitle().title" :ticket="activeTitle().ticket" />
     </main>
   </div>
 

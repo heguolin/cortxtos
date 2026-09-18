@@ -6,4 +6,6 @@ export interface ServerDeps {
   db: DB
   config: AppConfig
   rateLimiter: LoginRateLimiter
+  /** Vault 真相源目录（ADR 0003） */
+  vaultDir: string
 }

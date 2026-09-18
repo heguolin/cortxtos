@@ -50,7 +50,12 @@ async function boot(): Promise<void> {
     console.warn('[cortxt] 告警: 未配置 LLM_BASE_URL —— 对话/嵌入在配置前将显式报错（不影响启动）')
   }
 
-  const app = createApp({ db, config, rateLimiter: new LoginRateLimiter() })
+  const app = createApp({
+    db,
+    config,
+    rateLimiter: new LoginRateLimiter(),
+    vaultDir: layout.vaultDir,
+  })
   startServer(app, config.server.port)
 }
 

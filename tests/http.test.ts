@@ -1,4 +1,7 @@
 import { describe, expect, it } from 'vitest'
+import fs from 'node:fs'
+import os from 'node:os'
+import path from 'node:path'
 import { openDb } from '../src/server/db.js'
 import { migrate } from '../src/server/migrations.js'
 import { createApp } from '../src/server/http.js'
@@ -9,7 +12,12 @@ import type { Hono } from 'hono'
 function makeApp(): Hono {
   const db = openDb(':memory:')
   migrate(db)
-  return createApp({ db, config: FACTORY_CONFIG, rateLimiter: new LoginRateLimiter() })
+  return createApp({
+    db,
+    config: FACTORY_CONFIG,
+    rateLimiter: new LoginRateLimiter(),
+    vaultDir: fs.mkdtempSync(path.join(os.tmpdir(), 'cortxt-vault-')),
+  })
 }
 
 describe('http 骨架', () => {

@@ -1,4 +1,7 @@
 import { describe, expect, it } from 'vitest'
+import fs from 'node:fs'
+import os from 'node:os'
+import path from 'node:path'
 import { openDb } from '../src/server/db.js'
 import { migrate } from '../src/server/migrations.js'
 import { createApp } from '../src/server/http.js'
@@ -14,7 +17,12 @@ async function setup(): Promise<{ app: Hono }> {
   migrate(db)
   process.env.APP_PASSWORD = PW
   await seedPasswordFromEnv(db)
-  const app = createApp({ db, config: FACTORY_CONFIG, rateLimiter: new LoginRateLimiter() })
+  const app = createApp({
+    db,
+    config: FACTORY_CONFIG,
+    rateLimiter: new LoginRateLimiter(),
+    vaultDir: fs.mkdtempSync(path.join(os.tmpdir(), 'cortxt-vault-')),
+  })
   return { app }
 }
 
@@ -88,7 +96,12 @@ describe('认证与会话', () => {
     expect(await seedPasswordFromEnv(db)).toBe('seeded')
     process.env.APP_PASSWORD = 'other-env-pass'
     expect(await seedPasswordFromEnv(db)).toBe('already')
-    const app = createApp({ db, config: FACTORY_CONFIG, rateLimiter: new LoginRateLimiter() })
+    const app = createApp({
+      db,
+      config: FACTORY_CONFIG,
+      rateLimiter: new LoginRateLimiter(),
+      vaultDir: fs.mkdtempSync(path.join(os.tmpdir(), 'cortxt-vault-')),
+    })
     expect((await loginReq(app, 'other-env-pass')).status).toBe(401)
     expect((await loginReq(app, PW)).status).toBe(200)
   })
