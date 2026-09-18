@@ -5,6 +5,7 @@ import SettingsView from './views/SettingsView.vue'
 import PlaceholderView from './views/PlaceholderView.vue'
 import KnowledgeView from './views/KnowledgeView.vue'
 import ChatView from './views/ChatView.vue'
+import BriefingView from './views/BriefingView.vue'
 
 type Authed = boolean | null
 
@@ -72,6 +73,7 @@ async function logout() {
       <ChatView v-if="view === 'chat'" />
       <SettingsView v-else-if="view === 'settings'" @changed="authed = false" />
       <KnowledgeView v-else-if="view === 'kb'" />
+      <BriefingView v-else-if="view === 'briefing'" />
       <PlaceholderView v-else :title="activeTitle().title" :ticket="activeTitle().ticket" />
     </main>
   </div>

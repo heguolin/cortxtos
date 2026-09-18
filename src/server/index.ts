@@ -8,6 +8,8 @@ import { LoginRateLimiter } from './auth/ratelimit.js'
 import { createEmbedderFromEnv } from './llm/embedder.js'
 import { buildChatModel } from './llm/chat.js'
 import { Indexer } from './kb/indexer.js'
+import { Scheduler } from './scheduler.js'
+import { runBriefing } from './briefing.js'
 import { createApp, startServer } from './http.js'
 import { dirLayout, resolveDataDir } from './paths.js'
 
@@ -71,6 +73,22 @@ async function boot(): Promise<void> {
   )
   indexer.recover()
 
+  // 副轴：每日简报（background 档）+ 进程内调度器
+  Scheduler.seedDailyBriefing(db, config.briefing.schedule)
+  const scheduler = new Scheduler(db, new Map([
+    [
+      'daily-briefing',
+      () =>
+        runBriefing(
+          db,
+          buildChatModel(config.models.background),
+          process.env.LLM_API_KEY,
+          config.briefing.promptTemplate,
+        ),
+    ],
+  ]))
+  scheduler.start()
+
   const app = createApp({
     db,
     config,
@@ -79,6 +97,7 @@ async function boot(): Promise<void> {
     indexer,
     embedder,
     chatModel: buildChatModel(config.models.primary),
+    scheduler,
   })
   startServer(app, config.server.port)
 }

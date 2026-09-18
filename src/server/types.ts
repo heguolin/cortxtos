@@ -4,6 +4,7 @@ import type { LoginRateLimiter } from './auth/ratelimit.js'
 import type { Indexer } from './kb/indexer.js'
 import type { EmbeddingClient } from './llm/embedder.js'
 import type { ChatModel } from './llm/chat.js'
+import type { Scheduler } from './scheduler.js'
 
 export interface ServerDeps {
   db: DB
@@ -17,4 +18,6 @@ export interface ServerDeps {
   embedder?: EmbeddingClient
   /** 聊天主力模型（票 06）；测试环境可缺省 */
   chatModel?: ChatModel
+  /** 调度器（票 07）；测试环境可缺省 */
+  scheduler?: Scheduler
 }
