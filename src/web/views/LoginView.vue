@@ -32,9 +32,9 @@ async function submit() {
 </script>
 
 <template>
-  <div class="grid h-full place-items-center">
+  <div class="grid h-full place-items-center px-4">
     <form
-      class="w-90 rounded-2xl border border-edge bg-panel p-8 shadow-[0_0_40px_rgba(242,107,255,0.08)]"
+      class="w-full max-w-sm rounded-2xl border border-edge bg-panel p-6 shadow-[0_0_40px_rgba(242,107,255,0.08)] sm:p-8"
       @submit.prevent="submit"
     >
       <h1 class="text-xl font-bold tracking-wide">

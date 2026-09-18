@@ -84,7 +84,7 @@ async function changePassword() {
             class="w-full rounded-lg border border-edge bg-void px-3 py-2 text-sm outline-none focus:border-neon"
           />
         </div>
-        <div class="grid grid-cols-2 gap-4">
+        <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <div>
             <label class="mb-1 block text-xs text-ink-dim" for="n1">新密码（≥8 位）</label>
             <input

@@ -150,8 +150,8 @@ async function saveEdit() {
       </p>
     </div>
 
-    <div class="rounded-2xl border border-edge bg-panel">
-      <table class="w-full text-sm">
+    <div class="overflow-x-auto rounded-2xl border border-edge bg-panel">
+      <table class="w-full min-w-[560px] text-sm">
         <thead>
           <tr class="border-b border-edge text-left text-xs text-ink-dim">
             <th class="px-5 py-3">文档</th>
@@ -208,7 +208,7 @@ async function saveEdit() {
     <!-- 在线 Markdown 编辑 -->
     <div
       v-if="editing"
-      class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-6"
+      class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-3 md:p-6"
       @click.self="editing = null"
     >
       <div class="flex h-full w-full max-w-3xl flex-col rounded-2xl border border-edge bg-panel p-6">

@@ -33,6 +33,8 @@ const streamCitations = ref<Citation[]>([])
 const error = ref('')
 const viewer = ref<{ documentId: number; title: string; page: number | null } | null>(null)
 const scrollBox = ref<HTMLElement | null>(null)
+const mobileSessions = ref(false)
+const currentSessionTitle = () => sessions.value.find((s) => s.id === currentId.value)?.title ?? ''
 
 let aborter: AbortController | null = null
 
@@ -183,9 +185,9 @@ function onCitation(c: Citation) {
 </script>
 
 <template>
-  <div class="flex h-full gap-6">
-    <!-- 会话列表 -->
-    <aside class="flex w-56 shrink-0 flex-col rounded-2xl border border-edge bg-panel">
+  <div class="flex h-full gap-3 md:gap-6">
+    <!-- 会话列表：桌面端常驻侧栏 -->
+    <aside class="hidden w-56 shrink-0 flex-col rounded-2xl border border-edge bg-panel md:flex">
       <button
         class="m-3 rounded-lg bg-neon/20 py-2 text-sm font-semibold text-neon transition hover:bg-neon/30"
         @click="newSession"
@@ -211,8 +213,21 @@ function onCitation(c: Citation) {
     </aside>
 
     <!-- 对话区 -->
-    <div class="flex min-w-0 flex-1 flex-col rounded-2xl border border-edge bg-panel">
-      <div ref="scrollBox" class="flex-1 space-y-4 overflow-auto p-6">
+    <div class="relative flex min-w-0 flex-1 flex-col rounded-2xl border border-edge bg-panel">
+      <!-- 移动端会话工具条 -->
+      <div class="flex items-center justify-between border-b border-edge px-4 py-2.5 md:hidden">
+        <button
+          class="rounded-lg bg-neon/15 px-3 py-1.5 text-xs text-neon"
+          @click="mobileSessions = true"
+        >
+          ☰ 会话{{ currentSessionTitle() ? `：${currentSessionTitle()}` : '' }}
+        </button>
+        <button class="rounded-lg bg-neon/20 px-3 py-1.5 text-xs text-neon" @click="newSession">
+          + 新对话
+        </button>
+      </div>
+
+      <div ref="scrollBox" class="flex-1 space-y-4 overflow-auto p-4 md:p-6">
         <div v-if="messages.length === 0 && !streaming" class="mt-24 text-center">
           <p class="text-ink-dim">和你的知识库聊聊——回答会带出处引用</p>
           <p class="mt-2 text-xs text-ink-dim/60">先在「知识库」页上传文档，再回到这里提问</p>
@@ -259,31 +274,64 @@ function onCitation(c: Citation) {
         <p v-if="error" class="text-center text-sm text-red-400">{{ error }}</p>
       </div>
 
-      <div class="border-t border-edge p-4">
-        <div class="flex items-end gap-3">
+      <div class="border-t border-edge p-3 md:p-4">
+        <div class="flex items-end gap-2 md:gap-3">
           <textarea
             v-model="input"
             rows="2"
             placeholder="问点什么…（Enter 发送，Shift+Enter 换行）"
-            class="flex-1 resize-none rounded-xl border border-edge bg-void px-4 py-3 text-sm outline-none focus:border-neon"
+            class="min-w-0 flex-1 resize-none rounded-xl border border-edge bg-void px-3 py-2.5 text-sm outline-none focus:border-neon md:px-4 md:py-3"
             :disabled="streaming"
             @keydown.enter.exact.prevent="send"
           ></textarea>
           <button
             v-if="streaming"
-            class="rounded-xl border border-red-400/50 px-5 py-3 text-sm text-red-300 transition hover:bg-red-400/10"
+            class="shrink-0 rounded-xl border border-red-400/50 px-3 py-2.5 text-sm text-red-300 transition hover:bg-red-400/10 md:px-5 md:py-3"
             @click="stopStream"
           >
             停止
           </button>
           <button
             v-else
-            class="rounded-xl bg-neon/20 px-5 py-3 text-sm font-semibold text-neon transition hover:bg-neon/30 disabled:opacity-40"
+            class="shrink-0 rounded-xl bg-neon/20 px-3 py-2.5 text-sm font-semibold text-neon transition hover:bg-neon/30 disabled:opacity-40 md:px-5 md:py-3"
             :disabled="!input.trim()"
             @click="send"
           >
             发送
           </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 移动端会话抽屉 -->
+    <div
+      v-if="mobileSessions"
+      class="fixed inset-0 z-40 bg-black/60 md:hidden"
+      @click.self="mobileSessions = false"
+    >
+      <div class="flex h-full w-72 flex-col border-r border-edge bg-panel p-3">
+        <div class="mb-3 flex items-center justify-between px-1">
+          <span class="text-sm font-bold">会话列表</span>
+          <button class="text-ink-dim" @click="mobileSessions = false">关闭</button>
+        </div>
+        <button
+          class="mb-3 rounded-lg bg-neon/20 py-2 text-sm font-semibold text-neon"
+          @click="mobileSessions = false; newSession()"
+        >
+          + 新对话
+        </button>
+        <div class="flex-1 overflow-auto px-1">
+          <button
+            v-for="s in sessions"
+            :key="s.id"
+            class="group mb-1 flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm"
+            :class="currentId === s.id ? 'bg-neon/15 text-neon' : 'text-ink-dim'"
+            @click="mobileSessions = false; openSession(s.id)"
+          >
+            <span class="truncate">{{ s.title }}</span>
+            <span class="ml-2 text-xs text-ink-dim" @click.stop="removeSession(s)">删</span>
+          </button>
+          <p v-if="sessions.length === 0" class="px-3 py-4 text-xs text-ink-dim">还没有会话</p>
         </div>
       </div>
     </div>

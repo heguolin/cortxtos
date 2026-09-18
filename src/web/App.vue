@@ -39,43 +39,66 @@ async function logout() {
 </script>
 
 <template>
-  <LoginView v-if="authed === false" @done="authed = true" />
+  <LoginView v-if="authed === false" />
 
-  <div v-else-if="authed === true" class="flex h-full">
-    <aside class="flex w-56 shrink-0 flex-col border-r border-edge bg-panel">
-      <div class="px-5 py-5">
-        <h1 class="text-lg font-bold tracking-wide text-ink">
-          Cortxt<span class="text-neon">OS</span>
-        </h1>
-        <p class="mt-1 text-xs text-ink-dim">自托管个人 AI 工作台</p>
-      </div>
-      <nav class="flex-1 space-y-1 px-3">
-        <button
-          v-for="item in nav"
-          :key="item.key"
-          class="w-full rounded-lg px-3 py-2 text-left text-sm transition"
-          :class="view === item.key ? 'bg-neon/15 text-neon' : 'text-ink-dim hover:text-ink'"
-          @click="view = item.key"
-        >
-          {{ item.label }}
-        </button>
-      </nav>
-      <div class="space-y-2 border-t border-edge px-5 py-4 text-xs">
-        <div>
-          <span v-if="healthVersion" class="text-neon-soft">daemon v{{ healthVersion }} · 在线</span>
-          <span v-else class="text-red-400">daemon 未连接</span>
+  <div v-else-if="authed === true" class="flex h-full flex-col md:flex-row">
+    <!-- 移动端顶栏 -->
+    <header class="flex items-center justify-between border-b border-edge bg-panel px-4 py-3 md:hidden">
+      <h1 class="text-base font-bold tracking-wide">
+        Cortxt<span class="text-neon">OS</span>
+      </h1>
+      <button class="text-xs text-ink-dim transition hover:text-ink" @click="logout">登出</button>
+    </header>
+    <!-- 移动端横向导航 -->
+    <nav class="flex gap-2 overflow-x-auto border-b border-edge bg-panel px-3 py-2 md:hidden">
+      <button
+        v-for="item in nav"
+        :key="item.key"
+        class="whitespace-nowrap rounded-full px-3.5 py-1.5 text-sm transition"
+        :class="view === item.key ? 'bg-neon/15 text-neon' : 'text-ink-dim'"
+        @click="view = item.key"
+      >
+        {{ item.label }}
+      </button>
+    </nav>
+
+    <div class="flex min-h-0 flex-1">
+      <!-- 桌面侧边栏 -->
+      <aside class="hidden w-56 shrink-0 flex-col border-r border-edge bg-panel md:flex">
+        <div class="px-5 py-5">
+          <h1 class="text-lg font-bold tracking-wide text-ink">
+            Cortxt<span class="text-neon">OS</span>
+          </h1>
+          <p class="mt-1 text-xs text-ink-dim">自托管个人 AI 工作台</p>
         </div>
-        <button class="text-ink-dim transition hover:text-ink" @click="logout">登出</button>
-      </div>
-    </aside>
+        <nav class="flex-1 space-y-1 px-3">
+          <button
+            v-for="item in nav"
+            :key="item.key"
+            class="w-full rounded-lg px-3 py-2 text-left text-sm transition"
+            :class="view === item.key ? 'bg-neon/15 text-neon' : 'text-ink-dim hover:text-ink'"
+            @click="view = item.key"
+          >
+            {{ item.label }}
+          </button>
+        </nav>
+        <div class="space-y-2 border-t border-edge px-5 py-4 text-xs">
+          <div>
+            <span v-if="healthVersion" class="text-neon-soft">daemon v{{ healthVersion }} · 在线</span>
+            <span v-else class="text-red-400">daemon 未连接</span>
+          </div>
+          <button class="text-ink-dim transition hover:text-ink" @click="logout">登出</button>
+        </div>
+      </aside>
 
-    <main class="flex-1 overflow-auto p-8">
-      <ChatView v-if="view === 'chat'" />
-      <SettingsView v-else-if="view === 'settings'" @changed="authed = false" />
-      <KnowledgeView v-else-if="view === 'kb'" />
-      <BriefingView v-else-if="view === 'briefing'" />
-      <PlaceholderView v-else :title="activeTitle().title" :ticket="activeTitle().ticket" />
-    </main>
+      <main class="min-w-0 flex-1 overflow-auto p-4 md:p-8">
+        <ChatView v-if="view === 'chat'" />
+        <SettingsView v-else-if="view === 'settings'" @changed="authed = false" />
+        <KnowledgeView v-else-if="view === 'kb'" />
+        <BriefingView v-else-if="view === 'briefing'" />
+        <PlaceholderView v-else :title="activeTitle().title" :ticket="activeTitle().ticket" />
+      </main>
+    </div>
   </div>
 
   <div v-else class="grid h-full place-items-center text-ink-dim">连接中…</div>

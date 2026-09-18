@@ -36,7 +36,7 @@ onMounted(async () => {
 
 <template>
   <div
-    class="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-6"
+    class="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-3 sm:p-6"
     @click.self="emit('close')"
   >
     <div class="flex h-full w-full max-w-4xl flex-col rounded-2xl border border-edge bg-panel">
