@@ -25,7 +25,7 @@ export interface DocumentRow {
   updated_at: string
 }
 
-export type KbStatus = 400 | 401 | 403 | 404 | 409 | 410 | 413 | 415
+export type KbStatus = 400 | 401 | 403 | 404 | 409 | 410 | 413 | 415 | 422 | 503
 
 export class KbError extends Error {
   constructor(
@@ -71,10 +71,15 @@ function uniqueVaultPath(vaultDir: string, name: string): string {
   }
 }
 
-function clearDerivedIndex(db: DB, documentId: number): void {
+/** 删除文档的派生索引行（向量 + FTS5 + chunks，注意先删引用 chunks 的行）。真相源文件不动。 */
+export function clearDerivedIndex(db: DB, documentId: number): void {
+  const hasVec = !!db.prepare("SELECT name FROM sqlite_master WHERE name = 'chunk_vec'").get()
+  if (hasVec) {
+    // chunk_vec 的 rowid 即 chunks.id（见 db.ts 注释）
+    db.prepare('DELETE FROM chunk_vec WHERE rowid IN (SELECT id FROM chunks WHERE document_id = ?)').run(documentId)
+  }
   db.prepare('DELETE FROM chunks_fts WHERE chunk_id IN (SELECT id FROM chunks WHERE document_id = ?)').run(documentId)
   db.prepare('DELETE FROM chunks WHERE document_id = ?').run(documentId)
-  // 向量行由票 04 在索引写入处一并清理（chunk_id 关联）
 }
 
 export interface UploadInput {

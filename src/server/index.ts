@@ -1,10 +1,12 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { ConfigError, loadConfig, loadDotEnv } from './config.js'
-import { openDb, ensureVecTable } from './db.js'
+import { openDb, currentVecDimensions, ensureVecTable } from './db.js'
 import { migrate } from './migrations.js'
 import { purgeExpiredSessions, seedPasswordFromEnv } from './auth/service.js'
 import { LoginRateLimiter } from './auth/ratelimit.js'
+import { createEmbedderFromEnv } from './llm/embedder.js'
+import { Indexer } from './kb/indexer.js'
 import { createApp, startServer } from './http.js'
 import { dirLayout, resolveDataDir } from './paths.js'
 
@@ -32,7 +34,16 @@ async function boot(): Promise<void> {
 
   const db = openDb(layout.dbPath)
   migrate(db)
-  ensureVecTable(db, config.models.embedding.dimensions)
+
+  // 嵌入维度变更 → 丢弃旧向量，全部文档回 queued 重建（Vault 是真相源，安全）
+  const currentDim = currentVecDimensions(db)
+  const wantedDim = config.models.embedding.dimensions
+  if (currentDim !== null && currentDim !== wantedDim) {
+    console.warn(`[cortxt] 嵌入维度 ${currentDim} → ${wantedDim}：丢弃旧向量，全部文档将重建索引`)
+    db.exec('DROP TABLE chunk_vec')
+    db.prepare("UPDATE documents SET status = 'queued', error = NULL").run()
+  }
+  ensureVecTable(db, wantedDim)
 
   // DESIGN §8：.env 仅在库中无密码时种子，此后以 DB 为准
   const seedState = await seedPasswordFromEnv(db)
@@ -50,11 +61,20 @@ async function boot(): Promise<void> {
     console.warn('[cortxt] 告警: 未配置 LLM_BASE_URL —— 对话/嵌入在配置前将显式报错（不影响启动）')
   }
 
+  const indexer = new Indexer(
+    db,
+    layout.vaultDir,
+    createEmbedderFromEnv(config.models.embedding),
+    config.models.embedding.dimensions,
+  )
+  indexer.recover()
+
   const app = createApp({
     db,
     config,
     rateLimiter: new LoginRateLimiter(),
     vaultDir: layout.vaultDir,
+    indexer,
   })
   startServer(app, config.server.port)
 }

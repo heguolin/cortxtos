@@ -29,6 +29,7 @@ export function kbRouter(deps: ServerDeps): Hono {
     if (!(file instanceof File)) throw new KbError(400, '缺少 file 字段')
     const bytes = new Uint8Array(await file.arrayBuffer())
     const result = uploadDocument(deps.db, deps.vaultDir, { name: file.name, bytes })
+    if (!result.duplicate) deps.indexer?.enqueue(result.document.id)
     return c.json(result, result.duplicate ? (200 as const) : (201 as const))
   })
 
@@ -56,7 +57,17 @@ export function kbRouter(deps: ServerDeps): Hono {
       .catch(() => ({}) as { content?: string })
     if (typeof body.content !== 'string') throw new KbError(400, '缺少 content 字段')
     const document = saveMarkdownEdit(deps.db, deps.vaultDir, Number(c.req.param('id')), body.content)
+    deps.indexer?.enqueue(document.id)
     return c.json({ document })
+  })
+
+  // 失败重试 / 手动重建索引
+  r.post('/api/documents/:id/reindex', (c) => {
+    const id = Number(c.req.param('id'))
+    if (!getDocument(deps.db, id)) throw new KbError(404, '文档不存在')
+    if (!deps.indexer) throw new KbError(503, '索引器未就绪（测试环境）')
+    deps.indexer.enqueue(id)
+    return c.json({ ok: true, queued: true }, 202)
   })
 
   r.delete('/api/documents/:id', (c) => {

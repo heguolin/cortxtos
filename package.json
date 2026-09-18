@@ -21,9 +21,11 @@
   "dependencies": {
     "@hono/node-server": "^1.14.4",
     "@node-rs/argon2": "^2.2.1",
+    "@node-rs/jieba": "^2.0.3",
     "better-sqlite3": "^12.2.0",
     "hono": "^4.9.7",
     "sqlite-vec": "^0.1.6",
+    "unpdf": "^1.8.1",
     "zod": "^4.1.5"
   },
   "devDependencies": {
