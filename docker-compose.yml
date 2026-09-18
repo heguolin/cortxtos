@@ -7,6 +7,9 @@ services:
       - ./data:/data
     expose:
       - "3000"
+    # 仅本机回环：供服务器上 SSH 隧道调试，不暴露公网（公网入口只走 Caddy 443）
+    ports:
+      - "127.0.0.1:3000:3000"
 
   caddy:
     image: caddy:2
