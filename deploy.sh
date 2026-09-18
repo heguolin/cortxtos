@@ -7,7 +7,7 @@ set -euo pipefail
 APP_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$APP_DIR"
 
-echo "==> [1/5] 安装 Docker（官方源，已装则跳过）"
+echo "==> [1/6] 安装 Docker（官方源，已装则跳过）"
 if ! command -v docker >/dev/null 2>&1; then
   dnf -y install dnf-plugins-core
   dnf -y config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo
@@ -15,6 +15,13 @@ if ! command -v docker >/dev/null 2>&1; then
   systemctl enable --now docker
 fi
 docker compose version >/dev/null 2>&1 || dnf -y install docker-compose-plugin
+
+# 腾讯云内网镜像源兜底（Hub 抽风时基础镜像拉不动）；仅在未配置任何加速时写入
+if [ -d /etc/docker ] && ! grep -qs 'registry-mirrors' /etc/docker/daemon.json 2>/dev/null; then
+  echo '{"registry-mirrors": ["https://mirror.ccs.tencentyun.com"]}' > /etc/docker/daemon.json
+  systemctl restart docker 2>/dev/null || true
+  echo "已配置腾讯云内网镜像加速 mirror.ccs.tencentyun.com"
+fi
 
 echo "==> [2/5] 系统 firewalld 放行 80/443（腾讯云控制台防火墙需在控制台另行放行）"
 if command -v firewall-cmd >/dev/null 2>&1; then
