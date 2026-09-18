@@ -1,6 +1,9 @@
 @import 'tailwindcss';
 
-/* CortxtOS 深色霓虹 · 基础色板（完整主题在票 08 由视觉稿定稿） */
+/* ============================================================
+   CortxtOS 深色霓虹主题 v1（票 08 定稿）
+   基调：近黑蓝紫深底 + 粉紫霓虹点缀；克制、可长时间凝视
+   ============================================================ */
 @theme {
   --color-void: #0b0713;
   --color-panel: #141021;
@@ -18,7 +21,12 @@ body {
 }
 
 body {
+  /* 深底 + 双角霓虹晕光，极轻，不抢内容 */
   background-color: var(--color-void);
+  background-image:
+    radial-gradient(1200px 600px at 85% -10%, rgba(242, 107, 255, 0.07), transparent 60%),
+    radial-gradient(1000px 500px at -10% 110%, rgba(157, 123, 255, 0.06), transparent 60%);
+  background-attachment: fixed;
   color: var(--color-ink);
   font-family:
     'PingFang SC',
@@ -26,4 +34,38 @@ body {
     system-ui,
     -apple-system,
     sans-serif;
+}
+
+::selection {
+  background: rgba(242, 107, 255, 0.35);
+  color: #fff;
+}
+
+/* 细滚动条，霓虹拇指 */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-edge) transparent;
+}
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+*::-webkit-scrollbar-thumb {
+  background: var(--color-edge);
+  border-radius: 4px;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: var(--color-neon-soft);
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* 通用发光工具类 */
+.neon-glow {
+  box-shadow: 0 0 24px rgba(242, 107, 255, 0.12);
+}
+.neon-text {
+  color: var(--color-neon);
+  text-shadow: 0 0 12px rgba(242, 107, 255, 0.45);
 }

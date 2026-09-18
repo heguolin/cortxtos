@@ -32,7 +32,7 @@ if ! swapon --show | grep -q .; then
   grep -q '/swapfile' /etc/fstab || echo '/swapfile none swap sw 0 0' >> /etc/fstab
 fi
 
-echo "==> [4/5] 准备 .env"
+echo "==> [4/6] 准备 .env"
 if [ ! -f .env ]; then
   cp .env.example .env
   echo "已从模板生成 .env —— 请填入 APP_PASSWORD / LLM_API_KEY / LLM_BASE_URL 后重新执行本脚本"
@@ -40,7 +40,14 @@ if [ ! -f .env ]; then
 fi
 grep -q '^APP_PASSWORD=..*' .env || { echo ".env 里 APP_PASSWORD 还没填"; exit 1; }
 
-echo "==> [5/5] 构建并启动"
+echo "==> [5/6] 每日备份 cron（02:30，保留 14 份）"
+chmod +x "$APP_DIR/backup.sh"
+if ! crontab -l 2>/dev/null | grep -q 'backup.sh'; then
+  (crontab -l 2>/dev/null; echo "30 2 * * * bash $APP_DIR/backup.sh >> /var/log/cortxt-backup.log 2>&1") | crontab -
+  echo "已安装备份 cron"
+fi
+
+echo "==> [6/6] 构建并启动"
 docker compose up -d --build
 sleep 3
 docker compose ps
