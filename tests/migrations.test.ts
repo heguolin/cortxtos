@@ -50,7 +50,7 @@ describe('migrate', () => {
     const afterFirst = schemaOf(db)
     migrate(db)
     expect(schemaOf(db)).toEqual(afterFirst)
-    expect((db.prepare('SELECT COUNT(*) AS n FROM _migrations').get() as { n: number }).n).toBe(2)
+    expect((db.prepare('SELECT COUNT(*) AS n FROM _migrations').get() as { n: number }).n).toBe(3)
   })
 
   it('WAL 已开启（文件库）', () => {

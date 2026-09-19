@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import {
   KbError,
   deleteDocument,
+  findDocumentByUrl,
   getDocument,
   listDocuments,
   normalizeTags,
@@ -139,9 +140,37 @@ export function kbRouter(deps: ServerDeps): Hono {
     if (extractBareUrl(text)) {
       const page = await captureUrlPage(text)
       const content = buildCaptureMarkdown(page)
+      const bytes = new TextEncoder().encode(content)
+      const sha = (await import('node:crypto')).createHash('sha256').update(bytes).digest('hex')
+
+      // ADR 0005：URL 为业务身份——同 URL 已在库 → 幂等或覆盖（标签保留）
+      const existing = findDocumentByUrl(deps.db, page.url)
+      if (existing) {
+        if (existing.sha256 === sha) {
+          return c.json({ document: existing, duplicate: true, captured: true }, 200 as const)
+        }
+        const tags = existing.tags
+        deleteDocument(deps.db, deps.vaultDir, existing.id)
+        const result = uploadDocument(deps.db, deps.vaultDir, {
+          name: `${page.title}.md`,
+          bytes,
+          url: page.url,
+        })
+        if (tags !== '[]') {
+          try {
+            setTags(deps.db, result.document.id, JSON.parse(tags) as string[])
+          } catch {
+            // 旧标签数据异常时不阻断覆盖
+          }
+        }
+        deps.indexer.enqueue(result.document.id)
+        return c.json({ document: result.document, overwritten: true, captured: true }, 200 as const)
+      }
+
       const result = uploadDocument(deps.db, deps.vaultDir, {
         name: `${page.title}.md`,
-        bytes: new TextEncoder().encode(content),
+        bytes,
+        url: page.url,
       })
       if (!result.duplicate) deps.indexer.enqueue(result.document.id)
       return c.json(

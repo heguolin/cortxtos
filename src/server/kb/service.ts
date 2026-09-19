@@ -126,6 +126,8 @@ export function clearDerivedIndex(db: DB, documentId: number): void {
 export interface UploadInput {
   name: string
   bytes: Uint8Array
+  /** 网页捕获的业务身份（ADR 0005）；文件捕获不传 */
+  url?: string
 }
 
 export interface UploadResult {
@@ -152,10 +154,15 @@ export function uploadDocument(db: DB, vaultDir: string, input: UploadInput): Up
   const title = path.basename(target)
   const info = db
     .prepare(
-      "INSERT INTO documents(title, source, mime, sha256, size, status) VALUES (?, ?, ?, ?, ?, 'queued')",
+      "INSERT INTO documents(title, source, mime, sha256, size, status, url) VALUES (?, ?, ?, ?, ?, 'queued', ?)",
     )
-    .run(title, title, mime, sha, input.bytes.byteLength)
+    .run(title, title, mime, sha, input.bytes.byteLength, input.url ?? null)
   return { document: getDocument(db, Number(info.lastInsertRowid))!, duplicate: false }
+}
+
+/** ADR 0005：按来源 URL 找网页文档（业务身份） */
+export function findDocumentByUrl(db: DB, url: string): DocumentRow | undefined {
+  return db.prepare('SELECT * FROM documents WHERE url = ?').get(url) as DocumentRow | undefined
 }
 
 /** DESIGN §4.1：删除 = 删文件 + 删索引行；先删 DB（事务），文件尽力删（孤儿文件不可见且会被 reindex 收编） */

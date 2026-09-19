@@ -1,6 +1,7 @@
 import type { DB } from './db.js'
 import { baseline } from './migrations/0001_baseline.js'
 import { documentTags } from './migrations/0002_document_tags.js'
+import { documentUrl } from './migrations/0003_document_url.js'
 
 export interface Migration {
   name: string
@@ -8,7 +9,7 @@ export interface Migration {
 }
 
 /** 注册表：新增迁移在此按序追加 */
-export const migrations: Migration[] = [baseline, documentTags]
+export const migrations: Migration[] = [baseline, documentTags, documentUrl]
 
 export function migrate(db: DB): void {
   db.exec(`CREATE TABLE IF NOT EXISTS _migrations (

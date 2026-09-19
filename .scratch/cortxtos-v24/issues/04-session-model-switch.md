@@ -4,12 +4,12 @@
 
 **Blocked by:** None (can start immediately)
 
-**Status:** ready-for-agent
+**Status:** ready-for-agent ｜ **已完成**（有状态 mock 测试：失败→重试→原位替换+记账）
 
-- [ ] 失败消息出现重试按钮；点击后以 background 档重新生成并替换原失败消息
-- [ ] 用户气泡不重复；citations/usage 正确落库（purpose 随档位）
-- [ ] 新会话/刷新后自动回 primary；会话内多次重试稳定
-- [ ] primary 正常时按钮不出现
-- [ ] typecheck + 全量测试绿
+- [x] 失败消息出现重试按钮；点击后以 background 档重新生成并替换原失败消息
+- [x] 用户气泡不重复；citations/usage 正确落库（purpose 随档位）
+- [x] 新会话/刷新后自动回 primary；会话内多次重试稳定
+- [x] primary 正常时按钮不出现
+- [x] typecheck + 全量测试绿
 
-ready-for-agent
+ready-for-agent ｜ **已完成**（有状态 mock 测试：失败→重试→原位替换+记账）

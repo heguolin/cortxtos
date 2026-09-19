@@ -43,7 +43,7 @@ describe('迁移 0002 document_tags', () => {
     const row = db.prepare('SELECT tags FROM documents LIMIT 0').get() // 列存在性
     expect(row).toBeUndefined()
     const applied = (db.prepare('SELECT COUNT(*) AS n FROM _migrations').get() as { n: number }).n
-    expect(applied).toBe(2)
+    expect(applied).toBe(3)
   })
 })
 

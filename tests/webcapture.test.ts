@@ -11,6 +11,7 @@ import { LoginRateLimiter } from '../src/server/auth/ratelimit.js'
 import { seedPasswordFromEnv } from '../src/server/auth/service.js'
 import { FACTORY_CONFIG } from '../src/server/config.js'
 import { Indexer } from '../src/server/kb/indexer.js'
+import { setTags } from '../src/server/kb/service.js'
 import {
   extractBareUrl,
   assertPublicUrl,
@@ -220,6 +221,57 @@ describe('网页捕获端到端', () => {
     const { document, captured } = (await res.json()) as { document: { title: string }; captured?: boolean }
     expect(captured).toBeUndefined()
     expect(document.title).toBe('看这篇 https   example.com a 写得好.md') // 标题消毒替换 : / 字符
+  })
+
+  it('ADR 0005：同 URL 重抓内容不同 → 覆盖原文档且标签保留；内容相同 → 幂等', async () => {
+    process.env.CORTEXT_ALLOW_PRIVATE_FETCH = '1'
+    const { app, cookie, db, vaultDir } = await setup()
+    // 可数 mock：第 1 次请求返回 v1 正文，第 2 次起返回 v2
+    let hits = 0
+    const server = http.createServer((_req, res) => {
+      hits++
+      const v = hits === 1 ? '第一版正文，用于首轮抓取验证的完整内容。' : '第二版正文，内容更新了，并且补充了更多细节描述。'
+      res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' })
+      res.end(`<!doctype html><html><head><title>版本文章</title></head><body><article><p>${v}</p></article></body></html>`)
+    })
+    await new Promise<void>((r) => server.listen(0, '127.0.0.1', () => r()))
+    const { port } = server.address() as AddressInfo
+    const url = `http://127.0.0.1:${port}/post/1`
+
+    const r1 = await app.request('/api/documents/capture', {
+      method: 'POST', headers: { 'content-type': 'application/json', cookie },
+      body: JSON.stringify({ text: url }),
+    })
+    expect(r1.status).toBe(201)
+    const first = (await r1.json()) as { document: { id: number; source: string } }
+    setTags(db, first.document.id, ['踩坑'])
+
+    // URL 身份落库
+    const row = db.prepare('SELECT url FROM documents WHERE id = ?').get(first.document.id) as { url: string }
+    expect(row.url).toBe(url)
+
+    // 重抓（内容变化）→ 覆盖：仍是 1 份文档、标签保留
+    const r2 = await app.request('/api/documents/capture', {
+      method: 'POST', headers: { 'content-type': 'application/json', cookie },
+      body: JSON.stringify({ text: url }),
+    })
+    expect(r2.status).toBe(200)
+    const second = (await r2.json()) as { overwritten: boolean; document: { id: number } }
+    expect(second.overwritten).toBe(true)
+    const count = (db.prepare('SELECT COUNT(*) AS n FROM documents').get() as { n: number }).n
+    expect(count).toBe(1)
+    const tagsAfter = db.prepare('SELECT tags FROM documents WHERE id = ?').get(second.document.id) as { tags: string }
+    expect(JSON.parse(tagsAfter.tags)).toEqual(['踩坑'])
+
+    // 第三次抓取（内容不再变化）→ 幂等
+    const r3 = await app.request('/api/documents/capture', {
+      method: 'POST', headers: { 'content-type': 'application/json', cookie },
+      body: JSON.stringify({ text: url }),
+    })
+    expect(r3.status).toBe(200)
+    expect(((await r3.json()) as { duplicate: boolean }).duplicate).toBe(true)
+
+    server.close()
   })
 
   it('元信息头构造', () => {
