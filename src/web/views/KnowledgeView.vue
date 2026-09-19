@@ -48,8 +48,9 @@ async function refresh() {
   if (activeTag.value) params.set('tag', activeTag.value)
   const qs = params.toString()
   const res = await fetch(`/api/documents${qs ? `?${qs}` : ''}`)
-  if (res.ok) docs.value = ((await res.json()) as { documents: DocumentRow[] }).documents
+    if (res.ok) docs.value = ((await res.json()) as { documents: DocumentRow[] }).documents
 }
+onMounted(refresh)
 
 let searchTimer: ReturnType<typeof setTimeout> | undefined
 function onSearchInput() {
