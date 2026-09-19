@@ -16,7 +16,8 @@
     "build": "vite build",
     "start": "node bin/cortxt.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit && vue-tsc -p tsconfig.web.json --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "eval": "tsx scripts/eval.mts"
   },
   "dependencies": {
     "@earendil-works/pi-agent-core": "^0.85.1",

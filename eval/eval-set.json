@@ -1,0 +1,14 @@
+{
+  "description": "CortxtOS 检索评估集 v0（本地起步语料版）。条目需随知识库真实语料扩充至 ≥20 条（ADR 0008：扩至 20+ 并跑出基线后才做调参决策）。",
+  "entries": [
+    { "query": "CortxtOS 是什么", "expectDocument": "demo.md", "note": "单跳" },
+    { "query": "sqlite-vec 的主键插入有什么坑", "expectDocument": "sqlite-vec 踩坑记录.md", "note": "单跳" },
+    { "query": "绑定式主键 bug 的解决方案是什么", "expectDocument": "sqlite-vec 踩坑记录.md", "note": "同义改写" },
+    { "query": "混合检索用什么实现", "expectDocument": "demo.md", "note": "单跳" },
+    { "query": "Deep Agents 实战笔记主要讲什么", "expectDocument": "What if you don't need MCP at all .md", "note": "标题改写（可能无答案，观察行为）" },
+    { "query": "what if you don't need mcp", "expectDocument": "What if you don't need MCP at all .md", "note": "英文标题精确" },
+    { "query": "作者推荐用什么替代 MCP", "expectDocument": "What if you don't need MCP at all .md", "note": "跨语言推理" },
+    { "query": "Playwright MCP 被谁推荐", "expectDocument": "What if you don't need MCP at all .md", "note": "细节定位" },
+    { "query": "今天天气怎么样", "expectDocument": "__none__", "note": "无答案类：期望检索为空或低分（当前口径：不参与 Hit@k 统计则需在脚本排除）" }
+  ]
+}
