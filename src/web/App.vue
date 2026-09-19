@@ -39,7 +39,7 @@ async function logout() {
 </script>
 
 <template>
-  <LoginView v-if="authed === false" />
+  <LoginView v-if="authed === false" @done="authed = true" />
 
   <div v-else-if="authed === true" class="flex h-full flex-col md:flex-row">
     <!-- 移动端顶栏 -->
