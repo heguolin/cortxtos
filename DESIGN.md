@@ -72,11 +72,13 @@
 - 分流规则（确定性，无打分仲裁）：`chat → primary`；后台杂活（Briefing/摘要/标题）→ `background`；嵌入 → `embedding`；M2 起 `vision` 接入图片问答并支持手动换档。
 - 每次调用强制落 UsageRecord；`cost_est` 按 config 可选单价表估算，未配单价只记 token 不折算钱。
 - **阵容可编辑（v2.4）**：设置页修改四档 `model` / `baseUrl` / `apiKeyEnv`（key 本体仍只在 `.env`）→ 写服务器 `config.json` → daemon 自重启生效（见 §9.6）；嵌入维度变更触发既有全量重建机制。
-- **会话级手动换档（v2.4）**：对话生成失败时提供「切到 background 档重试」按钮；切换仅对当前会话生效、**不落库**，新会话/刷新自动回 `primary`。全局默认档变更走阵容编辑，两者职责不重叠。
+- **会话级手动换档（v2.4）**：对话生成失败时提供「切到 background 档重试」按钮；语义 = **重试生成**——对上一条用户消息用 background 档重跑「检索 + 生成」，替换失败的 assistant 消息，用户气泡不重复插入；仅当前会话生效、**不落库**，新会话/刷新自动回 `primary`。全局默认档变更走阵容编辑，两者职责不重叠。
 
 ### 4.5 网页链接抓取（v2.4 新增）
 
 - **入口**：快速捕获框升级——输入以 `http://` / `https://` 开头的内容即走抓取管线（纯文本仍走原捕获）。
+- **触发边界（grill-with-docs 裁定）**：仅当捕获输入 trim 后**整体**为一个合法 http/https URL 才走抓取；混有任何其他文字一律走纯文本捕获，不猜意图。
+- **身份规则（grill-with-docs 裁定）**：**同 URL 重抓 = 覆盖原文档**（删旧建新、标签保留迁移、不留版本历史）——知识库存"现在的认知"，版本历史归将来的 Git 同步管。
 - **管线**：URL 校验（仅公网 http/https，禁内网地址）→ 服务器抓取（UA 标识、30s 超时、2MB 上限）→ `@mozilla/readability` 正文提取（jsdom 解析）→ `turndown` 转 Markdown → 产物写入 Vault → 自动索引。
 - **产物形态**：Markdown 文档 = 元信息头（来源 URL、站点名、抓取时间）+ 标题 + 正文；**只存文字不落图片**（图片以原文链接保留）。
 - **失败处理**：403 / 防爬 / 超时 / 无正文 → 抓取状态显式报错（不静默），可手动重试；不引入重试队列。
@@ -84,9 +86,9 @@
 
 ### 4.6 检索调优与评估集（v2.4 新增）
 
-- **评估集**：`eval/eval-set.json`，20~30 条中文问答对（query → 期望文档 [+可选页码]），覆盖单跳/多跳/无答案三类。**基线优先**：`pnpm eval` 输出 top1 / top3 / top6 命中率，作为一切调参的前置与回归护栏。
+- **评估集**：`eval/eval-set.json`，20~30 条中文问答对（query → 期望文档 [+可选页码]），覆盖单跳/多跳/无答案三类；条目来源 = 从真实会话问题中挑选 + 人工标注期望文档。**基线优先**：`pnpm eval` 输出 top1 / top3 / top6 命中率（**文档级 Hit@k**——期望文档进前 k 名即命中，不看 chunk），作为一切调参的前置与回归护栏。
 - **调参项**（每项改动跑评估集对比）：RRF k 值、每路召回数、chunk 大小与重叠、jieba 分词粒度、标题路径（heading_path）是否入 FTS 加权。
-- **rerank 定位**：**可选后置**——仅当评估集 top3 命中率低于目标（默认 80%）时启用；rerank 作为第五类 ModelProfile（`kind: rerank`，走 OpenAI 兼容 `/v1/rerank` 端点，供应商不绑定）；未配置 = 不重排序。
+- **rerank 定位**：**可选后置**——仅当评估集 top3 命中率低于目标（**80% 为初始目标，随基线数字可调**）时启用；rerank 作为第五类 ModelProfile（`kind: rerank`，走 OpenAI 兼容 `/v1/rerank` 端点，供应商不绑定）；未配置 = 不重排序。
 - **纪律**：无基线数字不做调参；评估集随知识库实际内容扩充。
 
 ## 5. 技术架构
@@ -155,7 +157,7 @@ M0 起：每日 cron 打包 `/data` 到本机 `/backups`（保留 14 份）。M3
 
 ### 9.6 阵容保存自重启（v2.4）
 
-设置页保存模型阵容 → 写 `config.json` → daemon 延迟 3 秒 `process.exit(0)` → Docker `restart: unless-stopped` 自动拉起（全程约 5 秒）→ 前端轮询 `/healthz` 恢复后刷新。退出前向客户端返回确认，避免请求悬挂。
+设置页保存模型阵容 → **写盘前新配置先过 zod dry-run（校验不通过则不写盘、不重启，前端直接显示校验错误）** → 通过后写 `config.json` → daemon 延迟 3 秒 `process.exit(0)` → Docker `restart: unless-stopped` 自动拉起（全程约 5 秒）→ 前端轮询 `/healthz`；**轮询 30 秒未恢复则显示「重启失败——上服务器看 `docker compose logs app`，或手动修 `data/config.json`」**（逃生通道，极端情况下的手动兜底）。
 
 ## 10. 里程碑
 
@@ -195,9 +197,10 @@ M0 起：每日 cron 打包 `/data` 到本机 `/backups`（保留 14 份）。M3
 | ModelProfile | 一条模型配置：`role + baseUrl + model`，role ∈ {primary, background, vision, embedding}；失败显式报错，不自动降级 |
 | UsageRecord | 一次 LLM/嵌入调用的记账行（强制归因） |
 | Run | 任务的一次执行实例 |
-| 网页捕获（URL Capture） | v2.4：贴 URL → Readability 提取正文 → 元信息头 + Markdown 入 Vault 自动索引 |
-| 评估集（EvalSet） | v2.4：固定中文问答对集合，`pnpm eval` 输出 top1/top3/top6 命中率，一切检索调参的前置与回归护栏 |
-| 自重启生效 | v2.4：写 config.json → daemon 延迟退出 → Docker 自动拉起（§9.6），阵容编辑的生效机制 |
+| 网页捕获（URL Capture） | v2.4：贴 URL → Readability 提取正文 → 元信息头 + Markdown 入 Vault 自动索引；**裸 URL 触发**；同 URL 重抓覆盖原文档（标签保留） |
+| 评估集（EvalSet） | v2.4：固定中文问答对集合，`pnpm eval` 输出 top1/top3/top6 命中率（文档级 Hit@k），一切检索调参的前置与回归护栏 |
+| 自重启生效 | v2.4：写 config.json → daemon 延迟退出 → Docker 自动拉起（§9.6），阵容编辑的生效机制；写前 zod dry-run 防写坏 |
+| 重试生成 | v2.4：对上一条用户消息用指定档重跑检索+生成，替换失败的 assistant 消息；换档按钮的底层语义 |
 
 ## 13. 环境事实存档
 
@@ -208,7 +211,8 @@ M0 起：每日 cron 打包 `/data` 到本机 `/backups`（保留 14 份）。M3
 
 ## 14. 变更日志
 
-- **v2.4（2026-09-19，grilling 第四轮，本文档当前版）**：新增 §4.5 网页链接抓取、§4.6 检索调优与评估集、§9.6 阵容保存自重启；§4.4 增阵容可编辑与会话级换档；§3 信息架构对齐实际页面；§8 egress 白名单修订；§10 里程碑更新（v2.0–v2.3 标注已上线，新增 M-A/M-C/M-B）；§11 推迟项、§12 术语、§6 数据模型同步。
+- **v2.4（2026-09-19，本文档当前版）**：grilling 第四轮——新增 §4.5 网页链接抓取、§4.6 检索调优与评估集、§9.6 阵容保存自重启；§4.4 增阵容可编辑与会话级换档；§3 信息架构对齐实际页面；§8 egress 白名单修订；§10 里程碑更新（M-A/M-C/M-B）；§11 推迟项、§12 术语、§6 数据模型同步。
+- **v2.4.1（grill-with-docs 轮补边界）**：网页捕获身份规则（URL 为业务身份，重抓覆盖保留标签）、裸 URL 触发边界、自重启 zod dry-run + 30s 超时逃生通道、换档语义 = 重试生成；CONTEXT.md 同步四术语（命中 Hit@k / 会话级换档 / 重试生成 / 网页捕获）。
 - **v2.3（已上线）**：用量明细页、知识库标签组织（迁移 0002）。
 - **v2.2（已上线）**：对话工具深挖（混合式 agent loop）、图片问答（vision 当轮）、快速捕获、任务携带知识库检索、update.sh。
 - **v2.1（已上线）**：检索两段式、引用点击边界、模型角色正名（primary/background/vision/embedding）、密码生命周期（DB 为准）。
