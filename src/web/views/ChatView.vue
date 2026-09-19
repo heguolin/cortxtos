@@ -61,7 +61,7 @@ async function loadSessions() {
 }
 onMounted(loadSessions)
 
-// 仪表盘快捷提问：带问题进入对话页时自动发送
+// 仪表盘快捷提问：带问题进入对话页时自动发送（immediate：挂载时已带问题也要触发）
 watch(
   () => bus.ask,
   (q) => {
@@ -70,6 +70,7 @@ watch(
     input.value = q
     void send()
   },
+  { immediate: true },
 )
 
 async function newSession() {
@@ -165,7 +166,14 @@ async function send() {
           error.value = payload.message as string
         } else if (eventName === 'done') {
           const p = payload as { userMessage: ChatMessage; assistantMessage: ChatMessage }
-          messages.value.push(p.userMessage, p.assistantMessage)
+          // 用户消息已在发送时乐观插入，这里只补服务端的回答（否则用户气泡会重复）
+          const optimistic = [...messages.value].reverse().find((m) => m.role === 'user')
+          if (optimistic) {
+            optimistic.id = p.userMessage.id ?? optimistic.id
+          } else {
+            messages.value.push(p.userMessage)
+          }
+          messages.value.push(p.assistantMessage)
           streamText.value = ''
           streamCitations.value = []
           void scrollBottom()
