@@ -24,6 +24,10 @@ export interface ServerDeps {
   visionModel?: ChatModel | null
   /** vision 档读取 key 的环境变量名 */
   visionApiKeyEnv?: string
+  /** config.json 绝对路径（阵容编辑写盘用，ADR 0007）；测试可缺省 */
+  configPath?: string
+  /** 阵容保存成功后的自重启钩子（生产 = 延迟退出交 Docker 拉起；测试省略） */
+  onConfigSave?: () => void
   /** 调度器（票 07）；测试环境可缺省 */
   scheduler?: Scheduler
 }

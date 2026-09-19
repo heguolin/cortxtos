@@ -111,6 +111,12 @@ async function boot(): Promise<void> {
     visionModel: config.models.vision ? buildChatModel(config.models.vision, { supportsImages: true }) : null,
     visionApiKeyEnv: config.models.vision?.apiKeyEnv ?? 'LLM_API_KEY',
     scheduler,
+    configPath: layout.configPath,
+    // ADR 0007：阵容保存成功后延迟退出，Docker/tsx 自动拉起
+    onConfigSave: () => {
+      console.log('[cortxt] 阵容已写入 config.json，3 秒后自重启生效…')
+      setTimeout(() => process.exit(0), 3000)
+    },
   })
   startServer(app, config.server.port)
 }
