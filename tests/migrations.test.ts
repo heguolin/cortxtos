@@ -44,13 +44,13 @@ describe('migrate', () => {
     ).toBe(1)
   })
 
-  it('迁移幂等：连跑两遍 schema 无 diff，_migrations 只记一条', () => {
+  it('迁移幂等：连跑两遍 schema 无 diff，_migrations 按注册数记录', () => {
     const db = openDb(':memory:')
     migrate(db)
     const afterFirst = schemaOf(db)
     migrate(db)
     expect(schemaOf(db)).toEqual(afterFirst)
-    expect((db.prepare('SELECT COUNT(*) AS n FROM _migrations').get() as { n: number }).n).toBe(1)
+    expect((db.prepare('SELECT COUNT(*) AS n FROM _migrations').get() as { n: number }).n).toBe(2)
   })
 
   it('WAL 已开启（文件库）', () => {

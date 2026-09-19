@@ -8,6 +8,7 @@ import ChatView from './views/ChatView.vue'
 import BriefingView from './views/BriefingView.vue'
 import DashboardView from './views/DashboardView.vue'
 import TasksView from './views/TasksView.vue'
+import UsageView from './views/UsageView.vue'
 
 type Authed = boolean | null
 
@@ -21,6 +22,7 @@ const nav = [
   { key: 'kb', label: '◈ 知识库', title: '', ticket: '' },
   { key: 'briefing', label: '▤ 简报', title: '简报', ticket: '' },
   { key: 'tasks', label: '⚙ 任务', title: '', ticket: '' },
+  { key: 'usage', label: '⚡ 用量', title: '', ticket: '' },
   { key: 'settings', label: '⚑ 设置', title: '设置', ticket: '' },
 ]
 
@@ -102,6 +104,7 @@ async function logout() {
       <KnowledgeView v-else-if="view === 'kb'" />
       <BriefingView v-else-if="view === 'briefing'" />
       <TasksView v-else-if="view === 'tasks'" />
+      <UsageView v-else-if="view === 'usage'" />
       <PlaceholderView v-else :title="activeTitle().title" :ticket="activeTitle().ticket" />
     </main>
     </div>

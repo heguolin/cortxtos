@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
+import { fmtDbTime } from '../format'
 
 interface DocumentRow {
   id: number
@@ -7,6 +8,7 @@ interface DocumentRow {
   size: number
   status: 'queued' | 'indexing' | 'ready' | 'failed'
   error: string | null
+  tags: string | string[]
   updated_at: string
 }
 
@@ -18,6 +20,75 @@ const noticeOk = ref(false)
 // 快速捕获
 const captureText = ref('')
 const capturing = ref(false)
+// 知识库组织：搜索 + 标签过滤 + 标签编辑
+const searchQ = ref('')
+const activeTag = ref('')
+const editingTagsId = ref<number | null>(null)
+const editingTagsValue = ref('')
+const savingTags = ref(false)
+
+function tagsOf(doc: DocumentRow): string[] {
+  if (Array.isArray(doc.tags)) return doc.tags
+  try {
+    return JSON.parse(doc.tags || '[]') as string[]
+  } catch {
+    return []
+  }
+}
+
+const allTags = computed(() => {
+  const set = new Set<string>()
+  for (const d of docs.value) for (const t of tagsOf(d)) set.add(t)
+  return [...set].sort()
+})
+
+async function refresh() {
+  const params = new URLSearchParams()
+  if (searchQ.value.trim()) params.set('q', searchQ.value.trim())
+  if (activeTag.value) params.set('tag', activeTag.value)
+  const qs = params.toString()
+  const res = await fetch(`/api/documents${qs ? `?${qs}` : ''}`)
+  if (res.ok) docs.value = ((await res.json()) as { documents: DocumentRow[] }).documents
+}
+
+let searchTimer: ReturnType<typeof setTimeout> | undefined
+function onSearchInput() {
+  clearTimeout(searchTimer)
+  searchTimer = setTimeout(() => void refresh(), 300)
+}
+
+function setTag(tag: string) {
+  activeTag.value = activeTag.value === tag ? '' : tag
+  void refresh()
+}
+
+function startEditTags(doc: DocumentRow) {
+  editingTagsId.value = doc.id
+  editingTagsValue.value = tagsOf(doc).join(', ')
+}
+
+async function saveTags(doc: DocumentRow) {
+  savingTags.value = true
+  try {
+    const tags = editingTagsValue.value.split(/[,，]/).map((t) => t.trim()).filter(Boolean)
+    const res = await fetch(`/api/documents/${doc.id}/tags`, {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ tags }),
+    })
+    const body = (await res.json().catch(() => ({}))) as { error?: string }
+    if (!res.ok) throw new Error(body.error ?? `保存失败 (${res.status})`)
+    editingTagsId.value = null
+    noticeOk.value = true
+    notice.value = '标签已更新'
+    await refresh()
+  } catch (e) {
+    noticeOk.value = false
+    notice.value = e instanceof Error ? e.message : String(e)
+  } finally {
+    savingTags.value = false
+  }
+}
 
 // 在线编辑
 const editing = ref<DocumentRow | null>(null)
@@ -36,12 +107,6 @@ function fmtSize(n: number): string {
   if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`
   return `${(n / 1024 / 1024).toFixed(1)} MB`
 }
-
-async function refresh() {
-  const res = await fetch('/api/documents')
-  if (res.ok) docs.value = ((await res.json()) as { documents: DocumentRow[] }).documents
-}
-onMounted(refresh)
 
 async function capture() {
   const text = captureText.value.trim()
@@ -196,11 +261,40 @@ async function saveEdit() {
       </p>
     </div>
 
+    <!-- 搜索 + 标签过滤 -->
+    <div class="flex flex-wrap items-center gap-2 rounded-2xl border border-edge bg-panel p-3.5">
+      <input
+        v-model="searchQ"
+        placeholder="🔍 搜文档标题…"
+        class="w-52 rounded-xl border border-edge bg-void px-3.5 py-2 text-sm outline-none focus:border-neon"
+        @input="onSearchInput"
+      />
+      <div class="flex flex-wrap gap-1.5">
+        <button
+          class="rounded-full px-2.5 py-1 text-xs transition"
+          :class="!activeTag ? 'bg-neon/15 text-neon' : 'bg-white/6 text-ink-dim hover:text-ink'"
+          @click="setTag('')"
+        >
+          全部
+        </button>
+        <button
+          v-for="tag in allTags"
+          :key="tag"
+          class="rounded-full px-2.5 py-1 text-xs transition"
+          :class="activeTag === tag ? 'bg-neon/15 text-neon' : 'bg-white/6 text-ink-dim hover:text-ink'"
+          @click="setTag(tag)"
+        >
+          #{{ tag }}
+        </button>
+      </div>
+    </div>
+
     <div class="overflow-x-auto rounded-2xl border border-edge bg-panel">
-      <table class="w-full min-w-[560px] text-sm">
+      <table class="w-full min-w-[640px] text-sm">
         <thead>
           <tr class="border-b border-edge text-left text-xs text-ink-dim">
             <th class="px-5 py-3">文档</th>
+            <th class="px-3 py-3">标签</th>
             <th class="px-3 py-3">大小</th>
             <th class="px-3 py-3">状态</th>
             <th class="px-3 py-3">更新时间</th>
@@ -209,8 +303,8 @@ async function saveEdit() {
         </thead>
         <tbody>
           <tr v-if="docs.length === 0">
-            <td colspan="5" class="px-5 py-8 text-center text-ink-dim">
-              知识库还是空的——先扔几个文档进来
+            <td colspan="6" class="px-5 py-8 text-center text-ink-dim">
+              {{ searchQ || activeTag ? '没有匹配的文档' : '知识库还是空的——先扔几个文档进来' }}
             </td>
           </tr>
           <tr v-for="doc in docs" :key="doc.id" class="border-b border-edge/40 last:border-0">
@@ -224,13 +318,44 @@ async function saveEdit() {
               >
               <p v-if="doc.error" class="mt-1 text-xs text-red-400">{{ doc.error }}</p>
             </td>
+            <td class="px-3 py-3">
+              <template v-if="editingTagsId === doc.id">
+                <div class="flex items-center gap-1.5">
+                  <input
+                    v-model="editingTagsValue"
+                    placeholder="逗号分隔，如: agent, 面试"
+                    class="w-44 rounded-lg border border-edge bg-void px-2 py-1 text-xs outline-none focus:border-neon"
+                    @keydown.enter.prevent="saveTags(doc)"
+                  />
+                  <button class="rounded-lg bg-neon/20 px-2 py-1 text-xs text-neon" :disabled="savingTags" @click="saveTags(doc)">
+                    存
+                  </button>
+                  <button class="text-xs text-ink-dim" @click="editingTagsId = null">取消</button>
+                </div>
+              </template>
+              <template v-else>
+                <button
+                  class="flex flex-wrap items-center gap-1 text-left"
+                  title="点击编辑标签"
+                  @click="startEditTags(doc)"
+                >
+                  <span
+                    v-for="tag in tagsOf(doc)"
+                    :key="tag"
+                    class="rounded-full bg-neon-soft/12 px-2 py-0.5 text-[10.5px] text-neon-soft"
+                    >#{{ tag }}</span
+                  >
+                  <span v-if="tagsOf(doc).length === 0" class="text-xs text-ink-dim/60">＋标签</span>
+                </button>
+              </template>
+            </td>
             <td class="px-3 py-3 text-ink-dim">{{ fmtSize(doc.size) }}</td>
             <td class="px-3 py-3">
               <span class="rounded-full px-2 py-0.5 text-xs" :class="statusClass[doc.status]">
                 {{ doc.status }}
               </span>
             </td>
-            <td class="px-3 py-3 text-xs text-ink-dim">{{ doc.updated_at }}</td>
+            <td class="px-3 py-3 text-xs text-ink-dim">{{ fmtDbTime(doc.updated_at) }}</td>
             <td class="px-5 py-3 text-right">
               <button
                 v-if="doc.title.endsWith('.md')"

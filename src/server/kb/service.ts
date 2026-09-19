@@ -21,8 +21,55 @@ export interface DocumentRow {
   size: number
   status: string
   error: string | null
+  tags: string
   created_at: string
   updated_at: string
+}
+
+/** 标签规范化：trim + 去空 + 去重 + 上限（10 个 × 20 字） */
+export function normalizeTags(raw: unknown): string[] {
+  if (!Array.isArray(raw)) throw new KbError(400, 'tags 必须是字符串数组')
+  const seen = new Set<string>()
+  for (const t of raw) {
+    if (typeof t !== 'string') throw new KbError(400, '标签必须是字符串')
+    const v = t.trim().slice(0, 20)
+    if (v) seen.add(v)
+  }
+  const tags = [...seen]
+  if (tags.length > 10) throw new KbError(400, '标签最多 10 个')
+  return tags
+}
+
+export function setTags(db: DB, id: number, tags: string[]): DocumentRow {
+  const doc = getDocument(db, id)
+  if (!doc) throw new KbError(404, '文档不存在')
+  db.prepare("UPDATE documents SET tags = ?, updated_at = datetime('now') WHERE id = ?").run(
+    JSON.stringify(tags),
+    id,
+  )
+  return getDocument(db, id)!
+}
+
+export interface ListFilter {
+  /** 标题子串 */
+  q?: string
+  /** 精确标签 */
+  tag?: string
+}
+
+export function listDocuments(db: DB, filter: ListFilter = {}): DocumentRow[] {
+  const where: string[] = []
+  const params: unknown[] = []
+  if (filter.q?.trim()) {
+    where.push('title LIKE ?')
+    params.push(`%${filter.q.trim()}%`)
+  }
+  if (filter.tag?.trim()) {
+    where.push('EXISTS (SELECT 1 FROM json_each(documents.tags) je WHERE je.value = ?)')
+    params.push(filter.tag.trim())
+  }
+  const sql = `SELECT * FROM documents ${where.length ? 'WHERE ' + where.join(' AND ') : ''} ORDER BY id DESC`
+  return db.prepare(sql).all(...params) as DocumentRow[]
 }
 
 export type KbStatus = 400 | 401 | 403 | 404 | 409 | 410 | 413 | 415 | 422 | 503
@@ -38,12 +85,6 @@ export class KbError extends Error {
 
 export function getDocument(db: DB, id: number): DocumentRow | undefined {
   return db.prepare('SELECT * FROM documents WHERE id = ?').get(id) as DocumentRow | undefined
-}
-
-export function listDocuments(db: DB): DocumentRow[] {
-  return db
-    .prepare('SELECT * FROM documents ORDER BY id DESC')
-    .all() as DocumentRow[]
 }
 
 function sanitizeName(raw: string): string {

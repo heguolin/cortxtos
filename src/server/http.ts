@@ -9,6 +9,7 @@ import { kbRouter } from './routes/kb.js'
 import { chatRouter } from './routes/chat.js'
 import { tasksRouter } from './routes/tasks.js'
 import { dashboardRouter } from './routes/dashboard.js'
+import { usageRouter } from './routes/usage.js'
 import type { ServerDeps } from './types.js'
 
 export const SERVER_VERSION = '0.1.0'
@@ -44,6 +45,7 @@ export function createApp(deps: ServerDeps): Hono {
   app.route('/', chatRouter(deps))
   app.route('/', tasksRouter(deps))
   app.route('/', dashboardRouter(deps))
+  app.route('/', usageRouter(deps))
 
   // /api 未匹配的走 JSON 404，绝不落进 SPA 兜底
   app.notFound((c) => {

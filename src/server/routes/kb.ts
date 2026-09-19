@@ -4,13 +4,24 @@ import {
   deleteDocument,
   getDocument,
   listDocuments,
+  normalizeTags,
   readDocumentFile,
   reindexAll,
   saveMarkdownEdit,
+  setTags,
   uploadDocument,
 } from '../kb/service.js'
 import { hybridSearch } from '../kb/search.js'
 import type { ServerDeps } from '../types.js'
+
+/** tags 列是 JSON 字符串，API 边界统一解析为数组（脏数据降级空数组） */
+function withTags<D extends { tags: string }>(doc: D): Omit<D, 'tags'> & { tags: string[] } {
+  try {
+    return { ...doc, tags: (JSON.parse(doc.tags || '[]') as string[]) ?? [] }
+  } catch {
+    return { ...doc, tags: [] }
+  }
+}
 
 export function kbRouter(deps: ServerDeps): Hono {
   const r = new Hono()
@@ -21,7 +32,23 @@ export function kbRouter(deps: ServerDeps): Hono {
     return c.json({ error: '内部错误' }, 500)
   })
 
-  r.get('/api/documents', (c) => c.json({ documents: listDocuments(deps.db) }))
+  r.get('/api/documents', (c) => {
+    const documents = listDocuments(deps.db, {
+      q: c.req.query('q'),
+      tag: c.req.query('tag'),
+    })
+    return c.json({ documents: documents.map(withTags) })
+  })
+
+  // 打标签（v2.3 知识库组织）
+  r.patch('/api/documents/:id/tags', async (c) => {
+    const body = await c.req
+      .json<{ tags?: unknown }>()
+      .catch(() => ({}) as { tags?: unknown })
+    const tags = normalizeTags(body.tags)
+    const document = setTags(deps.db, Number(c.req.param('id')), tags)
+    return c.json({ document: withTags(document) })
+  })
 
   r.post('/api/documents', async (c) => {
     const body = await c.req.parseBody().catch(() => {
