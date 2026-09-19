@@ -106,13 +106,16 @@ describe('认证与会话', () => {
     expect((await loginReq(app, PW)).status).toBe(200)
   })
 
-  it('模型阵容只读接口：模型名可见、不泄露任何 key', async () => {
+  it('模型阵容接口：模型名与 key 环境变量名可见，但 key 本体不泄露', async () => {
     const { app } = await setup()
+    process.env.LLM_API_KEY = 'sk-secret-never-leak'
     const cookie = cookieOf(await loginReq(app, PW))
     const res = await app.request('/api/models', { headers: { cookie } })
     expect(res.status).toBe(200)
     const text = await res.text()
     expect(text).toContain('deepseek-v4-pro-0813')
-    expect(text.toLowerCase()).not.toContain('apikey')
+    expect(text).toContain('apiKeyEnv') // 环境变量名可回显（非机密）
+    expect(text).not.toContain('sk-secret-never-leak') // key 本体绝不出现
+    delete process.env.LLM_API_KEY
   })
 })
