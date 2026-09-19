@@ -72,7 +72,8 @@ function isFakeIp(ip: string): boolean {
   return ip.toLowerCase().startsWith('fdfe:dcba:9876:')
 }
 
-function isBlockedAddress(ip: string): boolean {
+/** 供测试导出的确定性判定 */
+export function isBlockedAddress(ip: string): boolean {
   return isPrivateAddress(ip) && !isFakeIp(ip)
 }
 

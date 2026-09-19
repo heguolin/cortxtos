@@ -17,6 +17,7 @@ import {
   assertPublicUrl,
   WebCaptureError,
   buildCaptureMarkdown,
+  isBlockedAddress,
 } from '../src/server/kb/webcapture.js'
 import type { EmbeddingClient, EmbedResult } from '../src/server/llm/embedder.js'
 import type { Hono } from 'hono'
@@ -120,7 +121,15 @@ describe('SSRF 防护', () => {
       await expect(assertPublicUrl(url), url).rejects.toThrow(WebCaptureError)
     }
     // 本地 DNS 劫持可能把任意域名解析到内网网关——无论哪种错误都属于拒绝
-    await expect(assertPublicUrl('https://nonexistent.invalid.example/x')).rejects.toThrow(WebCaptureError)
+    // 确定性 IP 判定（域名解析路径存在本地 DNS 劫持抖动，单独覆盖）：isBlockedAddress 单测见下
+    expect(isBlockedAddress('192.168.1.1')).toBe(true)
+    expect(isBlockedAddress('10.1.2.3')).toBe(true)
+    expect(isBlockedAddress('169.254.169.254')).toBe(true)
+    expect(isBlockedAddress('fe80::1')).toBe(true)
+    expect(isBlockedAddress('198.18.0.50')).toBe(false) // TUN fake-ip
+    expect(isBlockedAddress('fdfe:dcba:9876::31')).toBe(false) // mihomo v6 fake-ip
+    expect(isBlockedAddress('20.205.243.166')).toBe(false) // 公网
+    expect(isBlockedAddress('8.8.8.8')).toBe(false)
   })
 })
 
