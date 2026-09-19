@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { nextTick, onMounted, ref } from 'vue'
+import { nextTick, onMounted, ref, watch } from 'vue'
 import DOMPurify from 'dompurify'
 import { marked } from 'marked'
 import ViewerModal from './ViewerModal.vue'
+import { bus } from '../store'
 
 interface Session {
   id: number
@@ -59,6 +60,17 @@ async function loadSessions() {
   if (res.ok) sessions.value = ((await res.json()) as { sessions: Session[] }).sessions
 }
 onMounted(loadSessions)
+
+// 仪表盘快捷提问：带问题进入对话页时自动发送
+watch(
+  () => bus.ask,
+  (q) => {
+    if (!q) return
+    bus.ask = ''
+    input.value = q
+    void send()
+  },
+)
 
 async function newSession() {
   const res = await fetch('/api/sessions', {

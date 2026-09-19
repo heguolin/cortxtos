@@ -7,7 +7,8 @@ import { publicAuthRouter } from './routes/auth.js'
 import { authGuard, guardedRouter } from './routes/guarded.js'
 import { kbRouter } from './routes/kb.js'
 import { chatRouter } from './routes/chat.js'
-import { briefingRouter } from './routes/briefing.js'
+import { tasksRouter } from './routes/tasks.js'
+import { dashboardRouter } from './routes/dashboard.js'
 import type { ServerDeps } from './types.js'
 
 export const SERVER_VERSION = '0.1.0'
@@ -41,7 +42,8 @@ export function createApp(deps: ServerDeps): Hono {
   app.route('/', guardedRouter(deps))
   app.route('/', kbRouter(deps))
   app.route('/', chatRouter(deps))
-  app.route('/', briefingRouter(deps))
+  app.route('/', tasksRouter(deps))
+  app.route('/', dashboardRouter(deps))
 
   // /api 未匹配的走 JSON 404，绝不落进 SPA 兜底
   app.notFound((c) => {

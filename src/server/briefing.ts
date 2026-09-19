@@ -45,3 +45,28 @@ export async function runBriefing(
   })
   return result.text.trim() || '（空简报）'
 }
+
+/** 自定义定时任务：跑用户填写的提示词（background 档），产物落任务记录 */
+export async function runPromptTask(
+  db: DB,
+  model: ChatModel,
+  apiKey: string | undefined,
+  prompt: string,
+): Promise<string> {
+  const result = await streamChat(
+    model,
+    {
+      systemPrompt: '你是用户自托管工作台里的定时任务执行器。直接完成任务，用简体中文输出。',
+      messages: [{ role: 'user', content: prompt, timestamp: Date.now() }],
+    },
+    { apiKey },
+  )
+  if (result.errorMessage) throw new Error(result.errorMessage)
+  recordUsage(db, {
+    model: model.id,
+    purpose: 'background',
+    promptTokens: result.usage?.promptTokens ?? 0,
+    completionTokens: result.usage?.completionTokens ?? 0,
+  })
+  return result.text.trim() || '（空输出）'
+}

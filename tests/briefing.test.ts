@@ -11,7 +11,7 @@ import { LoginRateLimiter } from '../src/server/auth/ratelimit.js'
 import { seedPasswordFromEnv } from '../src/server/auth/service.js'
 import { FACTORY_CONFIG } from '../src/server/config.js'
 import { Scheduler } from '../src/server/scheduler.js'
-import { runBriefing } from '../src/server/briefing.js'
+import { runBriefing, runPromptTask } from '../src/server/briefing.js'
 import { uploadDocument } from '../src/server/kb/service.js'
 import { Indexer } from '../src/server/kb/indexer.js'
 import { buildChatModel } from '../src/server/llm/chat.js'
@@ -96,9 +96,12 @@ async function setup(withDoc: boolean) {
 
   const briefingModel = buildChatModel({ model: 'mock-brief', baseUrl: `http://127.0.0.1:${mock.port}/v1` })
   Scheduler.seedDailyBriefing(db, FACTORY_CONFIG.briefing.schedule)
-  const scheduler = new Scheduler(db, new Map([
-    ['daily-briefing', () => runBriefing(db, briefingModel, process.env.LLM_API_KEY, FACTORY_CONFIG.briefing.promptTemplate)],
-  ]))
+  const scheduler = new Scheduler(db, (job) => {
+    if (job.name === 'daily-briefing') {
+      return runBriefing(db, briefingModel, process.env.LLM_API_KEY, FACTORY_CONFIG.briefing.promptTemplate)
+    }
+    return runPromptTask(db, briefingModel, process.env.LLM_API_KEY, (JSON.parse(job.spec) as { prompt?: string }).prompt ?? '')
+  })
 
   const app = createApp({
     db,

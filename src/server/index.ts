@@ -9,7 +9,7 @@ import { createEmbedderFromEnv } from './llm/embedder.js'
 import { buildChatModel } from './llm/chat.js'
 import { Indexer } from './kb/indexer.js'
 import { Scheduler } from './scheduler.js'
-import { runBriefing } from './briefing.js'
+import { runBriefing, runPromptTask } from './briefing.js'
 import { createApp, startServer } from './http.js'
 import { dirLayout, resolveDataDir } from './paths.js'
 
@@ -73,20 +73,23 @@ async function boot(): Promise<void> {
   )
   indexer.recover()
 
-  // 副轴：每日简报（background 档）+ 进程内调度器
+  // 副轴：每日简报 + 自定义定时任务（background 档）+ 进程内调度器
   Scheduler.seedDailyBriefing(db, config.briefing.schedule)
-  const scheduler = new Scheduler(db, new Map([
-    [
-      'daily-briefing',
-      () =>
-        runBriefing(
-          db,
-          buildChatModel(config.models.background),
-          process.env[config.models.background.apiKeyEnv],
-          config.briefing.promptTemplate,
-        ),
-    ],
-  ]))
+  const backgroundModel = buildChatModel(config.models.background)
+  const backgroundKey = () => process.env[config.models.background.apiKeyEnv]
+  const scheduler = new Scheduler(db, (job) => {
+    if (job.name === 'daily-briefing') {
+      return runBriefing(db, backgroundModel, backgroundKey(), config.briefing.promptTemplate)
+    }
+    let prompt = ''
+    try {
+      prompt = (JSON.parse(job.spec) as { prompt?: string }).prompt ?? ''
+    } catch {
+      prompt = ''
+    }
+    if (!prompt.trim()) throw new Error('任务没有提示词（spec.prompt 为空）')
+    return runPromptTask(db, backgroundModel, backgroundKey(), prompt)
+  })
   scheduler.start()
 
   const app = createApp({

@@ -3,6 +3,9 @@ services:
     build: .
     restart: unless-stopped
     env_file: .env
+    environment:
+      # 容器默认 UTC 会让定时任务整体偏移 8 小时；对齐北京时间
+      TZ: Asia/Shanghai
     volumes:
       - ./data:/data
     expose:

@@ -60,9 +60,21 @@ export function lastRunLocalDate(db: DB, jobId: number): string | null {
   return localDateStr(d)
 }
 
+export interface JobSpec {
+  schedule: string
+  /** 自定义任务的提示词（内置 daily-briefing 无此字段） */
+  prompt?: string
+  /** 展示名（自定义任务用；内置任务用默认名） */
+  title?: string
+}
+
+/** 任务执行器：由上层按 job 分派（内置简报 / 自定义提示词任务） */
+export type JobExecutor = (job: JobRow) => Promise<string>
+
 /**
  * 进程内 cron（分钟粒度 tick，DESIGN §4.3）。
  * 错过点位（宕机/重启）当天补跑一次；重复触发由「当天已跑」判定挡住。
+ * schedule 变更即时生效（每 tick 重读 spec）。
  */
 export class Scheduler {
   private timer: ReturnType<typeof setInterval> | undefined
@@ -70,7 +82,7 @@ export class Scheduler {
 
   constructor(
     private readonly db: DB,
-    private readonly executors: Map<string, () => Promise<string>>,
+    private readonly executor: JobExecutor,
   ) {}
 
   /** 内置任务种子（幂等）：daily-briefing，schedule 取 config */
@@ -78,7 +90,7 @@ export class Scheduler {
     db.prepare('INSERT OR IGNORE INTO jobs(name, kind, spec) VALUES (?, ?, ?)').run(
       'daily-briefing',
       'cron',
-      JSON.stringify({ schedule }),
+      JSON.stringify({ schedule } satisfies JobSpec),
     )
   }
 
@@ -101,11 +113,11 @@ export class Scheduler {
       const jobs = this.db.prepare("SELECT * FROM jobs WHERE enabled = 1 AND kind = 'cron'").all() as JobRow[]
       const today = localDateStr()
       for (const job of jobs) {
-        let schedule: string
+        let schedule = '08:00'
         try {
-          schedule = (JSON.parse(job.spec) as { schedule?: string }).schedule ?? '08:00'
+          schedule = (JSON.parse(job.spec) as JobSpec).schedule ?? '08:00'
         } catch {
-          schedule = '08:00'
+          // 坏 spec 走默认
         }
         if (localHM() >= schedule && lastRunLocalDate(this.db, job.id) !== today) {
           void this.runJob(job.name).catch(() => {})
@@ -120,14 +132,12 @@ export class Scheduler {
   async runJob(name: string): Promise<number> {
     const job = getJobByName(this.db, name)
     if (!job) throw new Error(`任务不存在: ${name}`)
-    const executor = this.executors.get(name)
     const info = this.db
       .prepare("INSERT INTO runs(job_id, status) VALUES (?, 'running')")
       .run(job.id)
     const runId = Number(info.lastInsertRowid)
     try {
-      if (!executor) throw new Error(`任务没有执行器: ${name}`)
-      const output = await executor()
+      const output = await this.executor(job)
       this.db
         .prepare("UPDATE runs SET status = 'success', finished_at = datetime('now'), output = ? WHERE id = ?")
         .run(output, runId)

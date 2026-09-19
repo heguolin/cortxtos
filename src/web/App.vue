@@ -6,18 +6,22 @@ import PlaceholderView from './views/PlaceholderView.vue'
 import KnowledgeView from './views/KnowledgeView.vue'
 import ChatView from './views/ChatView.vue'
 import BriefingView from './views/BriefingView.vue'
+import DashboardView from './views/DashboardView.vue'
+import TasksView from './views/TasksView.vue'
 
 type Authed = boolean | null
 
 const authed = ref<Authed>(null)
-const view = ref('chat')
+const view = ref('dash')
 const healthVersion = ref('')
 
 const nav = [
-  { key: 'chat', label: '对话', title: '对话', ticket: '工单 06' },
-  { key: 'kb', label: '知识库', title: '', ticket: '' },
-  { key: 'briefing', label: '简报', title: '简报', ticket: '工单 07' },
-  { key: 'settings', label: '设置', title: '设置', ticket: '' },
+  { key: 'dash', label: '✦ 今天', title: '', ticket: '' },
+  { key: 'chat', label: '◇ 对话', title: '对话', ticket: '' },
+  { key: 'kb', label: '◈ 知识库', title: '', ticket: '' },
+  { key: 'briefing', label: '▤ 简报', title: '简报', ticket: '' },
+  { key: 'tasks', label: '⚙ 任务', title: '', ticket: '' },
+  { key: 'settings', label: '⚑ 设置', title: '设置', ticket: '' },
 ]
 
 const activeTitle = () => nav.find((n) => n.key === view.value) ?? nav[0]!
@@ -91,13 +95,15 @@ async function logout() {
         </div>
       </aside>
 
-      <main class="min-w-0 flex-1 overflow-auto p-4 md:p-8">
-        <ChatView v-if="view === 'chat'" />
-        <SettingsView v-else-if="view === 'settings'" @changed="authed = false" />
-        <KnowledgeView v-else-if="view === 'kb'" />
-        <BriefingView v-else-if="view === 'briefing'" />
-        <PlaceholderView v-else :title="activeTitle().title" :ticket="activeTitle().ticket" />
-      </main>
+    <main class="min-w-0 flex-1 overflow-auto p-4 md:p-8">
+      <DashboardView v-if="view === 'dash'" @navigate="view = $event" />
+      <ChatView v-else-if="view === 'chat'" />
+      <SettingsView v-else-if="view === 'settings'" @changed="authed = false" />
+      <KnowledgeView v-else-if="view === 'kb'" />
+      <BriefingView v-else-if="view === 'briefing'" />
+      <TasksView v-else-if="view === 'tasks'" />
+      <PlaceholderView v-else :title="activeTitle().title" :ticket="activeTitle().ticket" />
+    </main>
     </div>
   </div>
 

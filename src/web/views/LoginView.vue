@@ -43,10 +43,21 @@ async function submit() {
       class="w-full max-w-sm rounded-2xl border border-edge bg-panel p-6 shadow-[0_0_40px_rgba(242,107,255,0.08)] sm:p-8"
       @submit.prevent="submit"
     >
-      <h1 class="text-xl font-bold tracking-wide">
+      <div class="mb-4 select-none">
+        <svg viewBox="0 0 64 64" class="mx-auto h-16 w-16 drop-shadow-[0_0_18px_rgba(242,107,255,0.4)]">
+          <path
+            d="M32 8c-12 0-20 9-20 21v21c0 3 3 4 5 2l4-4 5 5c2 2 4 2 6 0l5-5 4 4c2 2 5 1 5-2V29c0-12-8-21-20-21z"
+            fill="rgba(242,107,255,.18)" stroke="#f26bff" stroke-width="2"
+          />
+          <circle cx="25" cy="30" r="2.6" fill="#f26bff" />
+          <circle cx="39" cy="30" r="2.6" fill="#f26bff" />
+          <path d="M27 38q5 4 10 0" stroke="#f26bff" stroke-width="2" fill="none" stroke-linecap="round" />
+        </svg>
+      </div>
+      <h1 class="text-2xl font-bold tracking-wide">
         Cortxt<span class="text-neon">OS</span>
       </h1>
-      <p class="mt-1 mb-6 text-xs text-ink-dim">自托管个人 AI 工作台 · 单用户</p>
+      <p class="mb-6 mt-2 text-xs text-ink-dim">你的大脑皮层，正在待机 ✦</p>
 
       <label class="mb-2 block text-sm text-ink-dim" for="pw">登录密码</label>
       <input
