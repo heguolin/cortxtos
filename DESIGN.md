@@ -1,6 +1,6 @@
 # CortxtOS v2 · 个人 AI 工作台 — 设计文档
 
-**版本** v2.2 · 2026-09-19 · 增补下一版范围（grilling 第三轮）：① 对话工具深挖 = **混合式**（固定首检索打底 + 模型按需调 kb_search/kb_read/kb_list）；② 图片问答 = vision 档当轮对话，**不入库**；③ 快速捕获 = 纯文本/Markdown，首行作标题；④ 自定义任务可勾选"携带知识库检索"；⑤ 模型阵容保持只读（v2.1 裁定不变）；⑥ 部署 = update.sh 一键更新。
+**版本** v2.4 · 2026-09-19 · 增量修订（grilling 第四轮：① 网页链接抓取入库；② 检索调优 + 中文评估集；③ 模型阵容可编辑 + 会话级换档。均按推荐裁定）。变更历史见文末「变更日志」。配套：术语纪律见 CONTEXT.md，决策记录见 docs/adr/0001–0004。
 
 ---
 
@@ -31,14 +31,15 @@
 
 登录页 → 单页应用，左侧边栏 + 主内容区：
 
-| 页面 | 里程碑 | 内容 |
-|------|--------|------|
-| **对话**（默认首页） | M0 | 多会话列表、流式回答、引用卡片（点击跳源文档段落）、模型标识 |
-| **知识库** | M0 | 文档列表（状态：待索引/索引中/就绪/失败）、拖拽上传、在线 Markdown 编辑器、删除/重建索引 |
-| **简报** | M0 | 每日 briefing 列表 + 详情 |
-| **任务** | M1 | 定时任务列表（开关/下一步运行时间）、运行记录（输入/输出/耗时/状态） |
-| **用量** | M2 | 按模型/按用途（chat/bg/embed）的 token 与费用估算，日/月聚合 |
-| **设置** | M0/M2 | M0：修改密码 + 模型阵容**只读**展示（key 只在服务器 `.env`，永不回显）；M2：阵容可编辑 + 手动换档 |
+| 页面 | 状态 | 内容 |
+|------|------|------|
+| **今天**（默认首页） | 已上线 | 问候语、统计卡、今日简报摘要、快捷提问（直达对话）、快速捕获、最近文档、近 7 日用量 |
+| **对话** | 已上线 | 多会话、SSE 流式、引用卡片（内置查看器 / PDF 跳页）、工具深挖提示、贴图提问 |
+| **知识库** | 已上线 | 上传（md/txt/pdf ≤50MB）、快速捕获、在线编辑、**标签 + 标题搜索**过滤、删除/重建索引 |
+| **简报** | 已上线 | 每日简报列表 + 详情 + 手动生成 |
+| **任务** | 已上线 | 自定义定时任务（可勾选"携带知识库检索"）、改时间/启停/删除、运行记录 |
+| **用量** | 已上线 | 汇总卡、每日堆叠图、按模型 Top10、明细表按用途筛选（近 7/30 天） |
+| **设置** | **v2.4** | 改密；模型阵容**可编辑**（四档 model/baseUrl/apiKeyEnv → 写 config.json → daemon 自重启生效）；key 仍只存 `.env`，永不回显 |
 
 ## 4. 模块规格
 
@@ -70,6 +71,23 @@
 - ModelProfile 四角色（`config.json` 可改）：`primary` = `deepseek-v4-pro-0813`、`vision` = `qwen3.8-flash`、`background` = `deepseek-v4-flash-0731`、`embedding` = BGE-M3 系。**全文禁用"兜底/fallback"**——background 的职责是后台杂活，不是接盘 chat。
 - 分流规则（确定性，无打分仲裁）：`chat → primary`；后台杂活（Briefing/摘要/标题）→ `background`；嵌入 → `embedding`；M2 起 `vision` 接入图片问答并支持手动换档。
 - 每次调用强制落 UsageRecord；`cost_est` 按 config 可选单价表估算，未配单价只记 token 不折算钱。
+- **阵容可编辑（v2.4）**：设置页修改四档 `model` / `baseUrl` / `apiKeyEnv`（key 本体仍只在 `.env`）→ 写服务器 `config.json` → daemon 自重启生效（见 §9.6）；嵌入维度变更触发既有全量重建机制。
+- **会话级手动换档（v2.4）**：对话生成失败时提供「切到 background 档重试」按钮；切换仅对当前会话生效、**不落库**，新会话/刷新自动回 `primary`。全局默认档变更走阵容编辑，两者职责不重叠。
+
+### 4.5 网页链接抓取（v2.4 新增）
+
+- **入口**：快速捕获框升级——输入以 `http://` / `https://` 开头的内容即走抓取管线（纯文本仍走原捕获）。
+- **管线**：URL 校验（仅公网 http/https，禁内网地址）→ 服务器抓取（UA 标识、30s 超时、2MB 上限）→ `@mozilla/readability` 正文提取（jsdom 解析）→ `turndown` 转 Markdown → 产物写入 Vault → 自动索引。
+- **产物形态**：Markdown 文档 = 元信息头（来源 URL、站点名、抓取时间）+ 标题 + 正文；**只存文字不落图片**（图片以原文链接保留）。
+- **失败处理**：403 / 防爬 / 超时 / 无正文 → 抓取状态显式报错（不静默），可手动重试；不引入重试队列。
+- **依赖**：`@mozilla/readability` + `jsdom` + `turndown`（锁版本）；抓取串行执行，不并发轰炸目标站。
+
+### 4.6 检索调优与评估集（v2.4 新增）
+
+- **评估集**：`eval/eval-set.json`，20~30 条中文问答对（query → 期望文档 [+可选页码]），覆盖单跳/多跳/无答案三类。**基线优先**：`pnpm eval` 输出 top1 / top3 / top6 命中率，作为一切调参的前置与回归护栏。
+- **调参项**（每项改动跑评估集对比）：RRF k 值、每路召回数、chunk 大小与重叠、jieba 分词粒度、标题路径（heading_path）是否入 FTS 加权。
+- **rerank 定位**：**可选后置**——仅当评估集 top3 命中率低于目标（默认 80%）时启用；rerank 作为第五类 ModelProfile（`kind: rerank`，走 OpenAI 兼容 `/v1/rerank` 端点，供应商不绑定）；未配置 = 不重排序。
+- **纪律**：无基线数字不做调参；评估集随知识库实际内容扩充。
 
 ## 5. 技术架构
 
@@ -95,7 +113,7 @@ Node 22 单进程 daemon (TypeScript ESM)
 
 ## 6. 数据模型（SQLite 核心表）
 
-`documents`(id, title, source, mime, sha256, size, status, created_at, updated_at) ·
+`documents`(id, title, source, mime, sha256, size, status, **tags**(JSON 数组, v2.3), created_at, updated_at) ·
 `chunks`(id, document_id, ord, text, page, heading_path, token_count) ·
 `chunks_fts`(FTS5) · `chunk_vec`(sqlite-vec) ·
 `sessions`(id, title, created_at) · `messages`(id, session_id, role, content, citations JSON, model, usage, created_at) ·
@@ -112,7 +130,7 @@ Node 22 单进程 daemon (TypeScript ESM)
 
 - 公网暴露面 = 443 (Caddy) 一切走 HTTPS；登录限速（防爆破）。
 - 单用户密码：首次启动从 `.env` 的 `APP_PASSWORD` 种子，argon2id 哈希入 DB，**此后以 DB 为准**（`.env` 仅在库中无密码时生效）；设置页改密写 DB。会话 Cookie HttpOnly + Secure。
-- egress 白名单：只调用聚合平台 LLM/嵌入端点；v2 无其他外呼（无邮件、无第三方推送）。
+- egress 白名单（v2.4 修订）：① 聚合平台 LLM/嵌入端点；② 可选 rerank 端点；③ **链接抓取目标**——用户输入的公网 URL（仅 http/https、禁内网/环回地址、30s 超时、2MB 上限）。除此之外无外呼（无邮件、无第三方推送）。
 - API key 只存服务器 `.env`；日志与 usage_records 不落 key。
 
 ## 9. 部署与运维
@@ -135,14 +153,23 @@ M0 起：每日 cron 打包 `/data` 到本机 `/backups`（保留 14 份）。M3
 2. **API key**：聚合平台 key（写入服务器 `.env`）。
 3. **DNS**：加 A 记录（或告知 DNSPod 授权方式）。
 
-## 10. 里程碑（每期结束都是可停可用状态）
+### 9.6 阵容保存自重启（v2.4）
+
+设置页保存模型阵容 → 写 `config.json` → daemon 延迟 3 秒 `process.exit(0)` → Docker `restart: unless-stopped` 自动拉起（全程约 5 秒）→ 前端轮询 `/healthz` 恢复后刷新。退出前向客户端返回确认，避免请求悬挂。
+
+## 10. 里程碑
+
+**v2.0–v2.3（全部已上线）**：M0 最小可用（部署/认证/入库/检索问答/主题/简报）→ M1 自动化做实（任务 CRUD + 工具深挖）→ M2 路由与用量（图片问答/用量页）→ v2.3 增量（标签组织/快速捕获）。上表历史验收项全部通过实机验收。
+
+**v2.4 里程碑**（各期独立可上线，`update.sh` 支持任意频次更新）：
 
 | 期 | 内容 | 验收标准 |
 |----|------|----------|
-| **M0 最小可用上线** | 部署链路 + 认证 + 上传入库 + 检索问答 + 基础主题 + briefing | ① 服务器 Compose 一键起 ② 登录后拖拽上传一批 md/pdf ③ 对文档提问答对且**每条回答带可点击出处** ④ 深色霓虹基础主题上线 ⑤ briefing 出现在简报页 |
-| **M1 自动化做实** | 定时任务管理 + 手动技能 + 任务页/运行记录 + 对话工具深挖（kb_search/kb_read 接入 agent loop） | 页面可建/停任务；daily-briefing 可改时间；运行记录完整可查；"总结第 3 篇文档"类深挖请求可用 |
-| **M2 路由与用量** | 视觉模型接入（图片问答）、主力/兜底手动切换、用量页 | 发图片能答；切换即时生效；usage_records 页面账目与聚合平台后台能对上量级 |
-| **M3 知识库增强** | Git 同步（vault 即 repo，定时 pull）、自动备份强化、检索调优（rerank/评估集） | 同步冲突不炸库；备份可恢复演练通过；评估集准确率有基线数字 |
+| **M-A 链接抓取** | 快速捕获 URL 识别 + Readability 抓取管线（§4.5） | ① 贴 3 类页面（技术博客/文档站/含代码块页面）正文完整入库且可检索引用 ② 防爬/超时显式报错可重试 ③ 产物带元信息头，Vault 内可见 |
+| **M-C 阵容编辑与换档** | 设置页阵容编辑 + 自重启 + 会话级换档（§4.4/§9.6） | ① 改 primary 模型名保存 → 自重启 → 新对话走新模型且阵容页回显正确 ② 嵌入维度变更触发全量重建 ③ 对话报错一键切 background 档完成本轮，新会话自动回 primary |
+| **M-B 检索调优** | 评估集 + 基线 + 调参 + 可选 rerank（§4.6） | ① 评估集 ≥20 条且 `pnpm eval` 出基线数字 ② 至少完成一组调参并附前后对比 ③ rerank 仅在 top3 < 80% 时接入，接入后复测有提升 |
+
+优先顺序：**M-A → M-C → M-B**（B 需要真实使用积累的文档与问题样本，放最后）。
 
 ## 11. Non-goals（v2 明确不做，防烂尾护栏）
 
@@ -154,6 +181,7 @@ M0 起：每日 cron 打包 `/data` 到本机 `/backups`（保留 14 份）。M3
 6. 代码仓库索引、浏览器剪藏扩展（二期候选，不在 v2 承诺内）
 7. 离线可用、本地模型（服务器无 GPU，本地 Ollama 出局）
 8. 自动降级路由 / 打分仲裁器（只做确定性分流 + 手动切换）
+9. **v2.4 明确推迟**：会话搜索/导出、Git 同步、COS 备份推送、浏览器剪藏扩展（候选池，按使用痛点排序，未入选本轮）
 
 ## 12. 术语表
 
@@ -167,6 +195,9 @@ M0 起：每日 cron 打包 `/data` 到本机 `/backups`（保留 14 份）。M3
 | ModelProfile | 一条模型配置：`role + baseUrl + model`，role ∈ {primary, background, vision, embedding}；失败显式报错，不自动降级 |
 | UsageRecord | 一次 LLM/嵌入调用的记账行（强制归因） |
 | Run | 任务的一次执行实例 |
+| 网页捕获（URL Capture） | v2.4：贴 URL → Readability 提取正文 → 元信息头 + Markdown 入 Vault 自动索引 |
+| 评估集（EvalSet） | v2.4：固定中文问答对集合，`pnpm eval` 输出 top1/top3/top6 命中率，一切检索调参的前置与回归护栏 |
+| 自重启生效 | v2.4：写 config.json → daemon 延迟退出 → Docker 自动拉起（§9.6），阵容编辑的生效机制 |
 
 ## 13. 环境事实存档
 
@@ -174,3 +205,11 @@ M0 起：每日 cron 打包 `/data` 到本机 `/backups`（保留 14 份）。M3
 - 目标服务器：腾讯云轻量 106.55.102.231，CentOS Stream 9，全新。
 - Pi Agent Harness：`@earendil-works/pi-agent-core` / `pi-ai`（MIT，Node ≥ 22.19，TS ESM，活跃 v0.85.x）。
 - 旧版遗产：`H:\day\DESIGN.md`（v1.0 手机方案，作废）、`CortxtOS 开发全流程解析.pdf`（v1 TUI 方案记录，作废）、`H:\deepseek-harness`（Pi fork 参考，仅查阅）。
+
+## 14. 变更日志
+
+- **v2.4（2026-09-19，grilling 第四轮，本文档当前版）**：新增 §4.5 网页链接抓取、§4.6 检索调优与评估集、§9.6 阵容保存自重启；§4.4 增阵容可编辑与会话级换档；§3 信息架构对齐实际页面；§8 egress 白名单修订；§10 里程碑更新（v2.0–v2.3 标注已上线，新增 M-A/M-C/M-B）；§11 推迟项、§12 术语、§6 数据模型同步。
+- **v2.3（已上线）**：用量明细页、知识库标签组织（迁移 0002）。
+- **v2.2（已上线）**：对话工具深挖（混合式 agent loop）、图片问答（vision 当轮）、快速捕获、任务携带知识库检索、update.sh。
+- **v2.1（已上线）**：检索两段式、引用点击边界、模型角色正名（primary/background/vision/embedding）、密码生命周期（DB 为准）。
+- **v2.0（已上线）**：三轮 grilling 定稿——自托管取代本地优先、Pi SDK 嵌入、SQLite 派生索引、深色霓虹主题。
