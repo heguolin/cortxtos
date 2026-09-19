@@ -146,7 +146,9 @@ export function tasksRouter(deps: ServerDeps): Hono {
   r.get('/api/runs', (c) => {
     const rows = deps.db
       .prepare(
-        `SELECT r.*, COALESCE(json_extract(j.spec, '$.title'), j.name) AS job_title, j.name AS job_name
+        `SELECT r.*, CASE WHEN j.name = 'daily-briefing' THEN '每日简报'
+           ELSE COALESCE(json_extract(j.spec, '$.title'), j.name) END AS job_title,
+         j.name AS job_name
          FROM runs r JOIN jobs j ON j.id = r.job_id
          ORDER BY r.id DESC LIMIT 50`,
       )

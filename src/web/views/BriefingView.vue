@@ -2,6 +2,7 @@
 import { onMounted, ref } from 'vue'
 import DOMPurify from 'dompurify'
 import { marked } from 'marked'
+import { fmtDbTime } from '../format'
 
 interface BriefingItem {
   id: number
@@ -88,7 +89,7 @@ async function generate() {
         <div class="flex items-center justify-between">
           <span class="text-sm text-ink">简报 #{{ b.id }}</span>
           <div class="flex items-center gap-3">
-            <span class="text-xs text-ink-dim">{{ b.started_at }}</span>
+            <span class="text-xs text-ink-dim">{{ fmtDbTime(b.started_at) }}</span>
             <span class="rounded-full px-2 py-0.5 text-xs" :class="statusClass[b.status]">{{ b.status }}</span>
           </div>
         </div>
@@ -103,7 +104,7 @@ async function generate() {
     >
       <div class="flex h-full max-h-[80vh] w-full max-w-3xl flex-col rounded-2xl border border-edge bg-panel">
         <div class="flex items-center justify-between border-b border-edge px-6 py-4">
-          <h3 class="font-bold">简报 #{{ detail.id }} · {{ detail.started_at }}</h3>
+          <h3 class="font-bold">简报 #{{ detail.id }} · {{ fmtDbTime(detail.started_at) }}</h3>
           <button class="text-ink-dim transition hover:text-ink" @click="detail = null">关闭</button>
         </div>
         <div class="flex-1 overflow-auto px-8 py-6">

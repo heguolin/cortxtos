@@ -2,6 +2,7 @@
 import { onMounted, ref } from 'vue'
 import DOMPurify from 'dompurify'
 import { marked } from 'marked'
+import { fmtDbTime } from '../format'
 
 interface Job {
   id: number
@@ -201,7 +202,7 @@ async function remove(job: Job) {
               立即运行
             </button>
             <button v-if="!job.builtin" class="ml-auto text-xs text-ink-dim transition hover:text-red-400" @click="remove(job)">删除</button>
-            <span v-if="job.last_run_at" class="text-[11px] text-ink-dim">{{ job.builtin ? '' : '' }}上次: {{ job.last_run_at }}</span>
+            <span v-if="job.last_run_at" class="text-[11px] text-ink-dim">上次: {{ fmtDbTime(job.last_run_at) }}</span>
           </template>
         </div>
       </div>
@@ -227,7 +228,7 @@ async function remove(job: Job) {
             <td class="px-4 py-2.5">{{ r.job_title }}</td>
             <td class="px-3 py-2.5"><span class="rounded-full px-2 py-0.5 text-xs" :class="statusClass[r.status]">{{ r.status }}</span></td>
             <td class="px-3 py-2.5 text-ink-dim">{{ dur(r) }}</td>
-            <td class="px-3 py-2.5 text-xs text-ink-dim">{{ r.started_at }}</td>
+            <td class="px-3 py-2.5 text-xs text-ink-dim">{{ fmtDbTime(r.started_at) }}</td>
           </tr>
         </tbody>
       </table>
@@ -237,7 +238,7 @@ async function remove(job: Job) {
     <div v-if="detail" class="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 md:p-6" @click.self="detail = null">
       <div class="flex h-full max-h-[80vh] w-full max-w-3xl flex-col rounded-2xl border border-edge bg-panel">
         <div class="flex items-center justify-between border-b border-edge px-6 py-4">
-          <h3 class="font-bold">{{ detail.job_title }} · {{ detail.started_at }}</h3>
+          <h3 class="font-bold">{{ detail.job_title }} · {{ fmtDbTime(detail.started_at) }}</h3>
           <button class="text-ink-dim hover:text-ink" @click="detail = null">关闭</button>
         </div>
         <div class="flex-1 overflow-auto px-7 py-6">
