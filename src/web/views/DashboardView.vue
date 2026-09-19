@@ -161,7 +161,7 @@ async function capture() {
           ></textarea>
           <div class="mt-2 flex items-center justify-between">
             <p v-if="captureMsg" :class="captureOk ? 'text-neon-soft' : 'text-red-400'" class="text-xs">{{ captureMsg }}</p>
-            <span v-else class="text-[11px] text-ink-dim">支持 Markdown，上限 5 万字</span>
+            <span v-else class="text-[11px] text-ink-dim">支持 Markdown 或贴网页链接（自动抓正文入库），上限 5 万字</span>
             <button
               class="rounded-lg bg-neon/20 px-3.5 py-1.5 text-xs font-semibold text-neon transition hover:bg-neon/30 disabled:opacity-40"
               :disabled="capturing || !captureText.trim()"

@@ -222,7 +222,7 @@ async function saveEdit() {
       <textarea
         v-model="captureText"
         rows="1"
-        placeholder="快速捕获：贴一段文字，首行当标题，保存即入库…"
+        placeholder="快速捕获：贴一段文字（首行当标题）或贴网页链接（自动抓正文入库）…"
         class="min-w-0 flex-1 resize-none rounded-xl border border-edge bg-void px-3.5 py-2.5 text-sm outline-none focus:border-neon"
         @keydown.enter.exact.prevent="capture"
       ></textarea>

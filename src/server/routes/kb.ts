@@ -12,6 +12,12 @@ import {
   uploadDocument,
 } from '../kb/service.js'
 import { hybridSearch } from '../kb/search.js'
+import {
+  WebCaptureError,
+  buildCaptureMarkdown,
+  captureUrlPage,
+  extractBareUrl,
+} from '../kb/webcapture.js'
 import type { ServerDeps } from '../types.js'
 
 /** tags 列是 JSON 字符串，API 边界统一解析为数组（脏数据降级空数组） */
@@ -28,6 +34,7 @@ export function kbRouter(deps: ServerDeps): Hono {
 
   r.onError((err, c) => {
     if (err instanceof KbError) return c.json({ error: err.message }, err.status)
+    if (err instanceof WebCaptureError) return c.json({ error: err.message }, err.status)
     console.error('[kb]', err)
     return c.json({ error: '内部错误' }, 500)
   })
@@ -71,7 +78,7 @@ export function kbRouter(deps: ServerDeps): Hono {
   // 原始文件：md 预览与 PDF 原生预览（票 06 引用跳转用）
   r.get('/api/documents/:id/raw', (c) => {
     const { document, bytes } = readDocumentFile(deps.db, deps.vaultDir, Number(c.req.param('id')))
-    return new Response(bytes, {
+    return new Response(new Uint8Array(bytes), {
       headers: {
         'content-type': `${document.mime}; charset=utf-8`,
         'content-disposition': `inline; filename*=UTF-8''${encodeURIComponent(document.title)}`,
@@ -119,7 +126,7 @@ export function kbRouter(deps: ServerDeps): Hono {
     return c.json({ hits })
   })
 
-  // 快速捕获：纯文本/Markdown 直接入库（DESIGN v2.2），首行作标题
+  // 快速捕获：裸 URL 走网页捕获管线（DESIGN §4.5）；纯文本/Markdown 直接入库（DESIGN v2.2），首行作标题
   r.post('/api/documents/capture', async (c) => {
     const body = await c.req
       .json<{ text?: string }>()
@@ -128,6 +135,20 @@ export function kbRouter(deps: ServerDeps): Hono {
     if (!text) throw new KbError(400, '内容不能为空')
     if (text.length > 50_000) throw new KbError(413, '内容超过 50000 字上限')
     if (!deps.indexer) throw new KbError(503, '索引器未就绪（测试环境）')
+
+    if (extractBareUrl(text)) {
+      const page = await captureUrlPage(text)
+      const content = buildCaptureMarkdown(page)
+      const result = uploadDocument(deps.db, deps.vaultDir, {
+        name: `${page.title}.md`,
+        bytes: new TextEncoder().encode(content),
+      })
+      if (!result.duplicate) deps.indexer.enqueue(result.document.id)
+      return c.json(
+        { document: result.document, duplicate: result.duplicate, captured: true },
+        result.duplicate ? (200 as const) : (201 as const),
+      )
+    }
 
     const firstLine = text.split(/\r?\n/).find((l) => l.trim().length > 0)?.trim() ?? ''
     const title = firstLine.replace(/^#+\s*/, '').replace(/[\\/:*?"<>|]/g, ' ').slice(0, 40) ||
