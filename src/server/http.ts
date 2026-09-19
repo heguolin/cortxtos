@@ -23,6 +23,18 @@ export function createApp(deps: ServerDeps): Hono {
 
   app.get('/healthz', (c) => c.json({ ok: true, version: SERVER_VERSION }))
 
+  // HTML 入口禁止缓存：重建后资源哈希变化，手机浏览器缓存的旧 index.html 会导致界面卡死
+  const indexHtml = () => fs.readFileSync(path.join(WEB_DIST_DIR, 'index.html'), 'utf8')
+  app.get('/', (c) => {
+    if (!fs.existsSync(path.join(WEB_DIST_DIR, 'index.html'))) {
+      return c.text(
+        'CortxtOS daemon 运行中。前端产物未构建：先执行 pnpm build（开发模式用 pnpm dev:web 走 Vite 5173）。',
+        200,
+      )
+    }
+    return c.html(indexHtml(), 200, { 'cache-control': 'no-cache' })
+  })
+
   // 注册顺序即语义：公开认证路由 → /api/* 鉴权守卫 → 受保护 API → SPA 兜底
   app.route('/', publicAuthRouter(deps))
   app.use('/api/*', authGuard(deps))
@@ -35,7 +47,7 @@ export function createApp(deps: ServerDeps): Hono {
   app.notFound((c) => {
     if (c.req.path.startsWith('/api')) return c.json({ error: 'not found' }, 404)
     if (fs.existsSync(path.join(WEB_DIST_DIR, 'index.html'))) {
-      return c.html(fs.readFileSync(path.join(WEB_DIST_DIR, 'index.html'), 'utf8'))
+      return c.html(indexHtml(), 200, { 'cache-control': 'no-cache' })
     }
     return c.text(
       'CortxtOS daemon 运行中。前端产物未构建：先执行 pnpm build（开发模式用 pnpm dev:web 走 Vite 5173）。',

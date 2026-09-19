@@ -17,10 +17,16 @@ async function submit() {
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ password: password.value }),
     })
-    const data = (await res.json().catch(() => ({}))) as { error?: string }
     if (res.ok) {
-      emit('done')
+      // 登录成功后回验一次会话，防止 Cookie 未存储导致的"假登录"卡壳
+      const me = await fetch('/api/auth/me')
+      if (me.ok) {
+        emit('done')
+      } else {
+        error.value = '登录成功但浏览器未保存会话 Cookie，请允许 Cookie 后重试'
+      }
     } else {
+      const data = (await res.json().catch(() => ({}))) as { error?: string }
       error.value = data.error ?? `登录失败 (${res.status})`
     }
   } catch {
@@ -48,6 +54,10 @@ async function submit() {
         v-model="password"
         type="password"
         autocomplete="current-password"
+        autocapitalize="off"
+        autocorrect="off"
+        spellcheck="false"
+        enterkeyhint="go"
         autofocus
         class="w-full rounded-lg border border-edge bg-void px-3 py-2 text-sm text-ink outline-none focus:border-neon"
         :disabled="busy"
