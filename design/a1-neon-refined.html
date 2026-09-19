@@ -1,0 +1,523 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>CortxtOS 设计稿 A1 · 深色霓虹精修</title>
+<style>
+:root {
+  --void: #0b0713;
+  --panel: #141021;
+  --panel2: #1b1530;
+  --edge: #2c2050;
+  --neon: #f26bff;
+  --neon-soft: #9d7bff;
+  --ink: #efe9ff;
+  --dim: #8f86ad;
+  --ok: #34d399;
+  --warn: #fbbf24;
+  --bad: #fb7185;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; }
+body {
+  background: var(--void); color: var(--ink);
+  font-family: 'PingFang SC', 'Microsoft YaHei', system-ui, sans-serif;
+  font-size: 14px;
+}
+body::before {
+  content: ''; position: fixed; inset: 0; pointer-events: none; z-index: 0;
+  background:
+    radial-gradient(1100px 560px at 88% -12%, rgba(242,107,255,.09), transparent 62%),
+    radial-gradient(900px 500px at -8% 108%, rgba(157,123,255,.08), transparent 60%);
+}
+
+/* ===== 设计稿工具条（非产品 UI） ===== */
+.mockbar {
+  position: sticky; top: 0; z-index: 99;
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  padding: 8px 16px; background: #05030a; border-bottom: 1px solid var(--edge);
+}
+.mockbar .tag { font-size: 12px; color: var(--dim); }
+.mockbar .tag b { color: var(--neon); }
+.mocknav { display: flex; gap: 6px; flex-wrap: wrap; }
+.mocknav button {
+  border: 1px solid var(--edge); background: transparent; color: var(--dim);
+  border-radius: 999px; padding: 4px 12px; font-size: 12px; cursor: pointer;
+}
+.mocknav button.on { border-color: var(--neon); color: var(--neon); background: rgba(242,107,255,.1); }
+.mockbar a { margin-left: auto; font-size: 12px; color: var(--neon-soft); text-decoration: none; }
+
+/* ===== 应用骨架 ===== */
+.app { position: relative; z-index: 1; display: none; height: calc(100vh - 45px); }
+.app.on { display: flex; }
+.sidebar {
+  width: 220px; flex-shrink: 0; display: flex; flex-direction: column;
+  background: rgba(20,16,33,.82); border-right: 1px solid var(--edge);
+}
+.brand { padding: 22px 20px 14px; }
+.brand h1 { font-size: 18px; letter-spacing: .5px; }
+.brand h1 span { color: var(--neon); text-shadow: 0 0 14px rgba(242,107,255,.5); }
+.brand p { font-size: 11px; color: var(--dim); margin-top: 4px; }
+.nav { flex: 1; padding: 6px 12px; display: flex; flex-direction: column; gap: 4px; }
+.nav button {
+  display: flex; align-items: center; gap: 10px; text-align: left;
+  padding: 10px 12px; border-radius: 12px; border: 1px solid transparent;
+  background: transparent; color: var(--dim); font-size: 13.5px; cursor: pointer;
+}
+.nav button svg { width: 16px; height: 16px; opacity: .75; }
+.nav button.on {
+  color: var(--neon); background: rgba(242,107,255,.12); border-color: rgba(242,107,255,.35);
+  box-shadow: 0 0 18px rgba(242,107,255,.1) inset;
+}
+.sidebar .foot { padding: 14px 20px; border-top: 1px solid var(--edge); font-size: 11px; color: var(--dim); }
+.sidebar .foot .dot { color: var(--ok); }
+
+.main { flex: 1; overflow: auto; padding: 26px 30px; }
+.page { display: none; max-width: 1060px; margin: 0 auto; }
+.page.on { display: block; }
+.page.chat-page.on { display: flex; max-width: none; }
+
+/* ===== 通用组件 ===== */
+.card {
+  background: rgba(20,16,33,.85); border: 1px solid var(--edge);
+  border-radius: 16px; padding: 18px 20px;
+}
+.card.glow { box-shadow: 0 0 30px rgba(242,107,255,.06); }
+.card h3 { font-size: 14px; margin-bottom: 12px; display: flex; align-items: center; gap: 8px; }
+.card h3 .more { margin-left: auto; font-size: 12px; color: var(--neon-soft); font-weight: 400; cursor: pointer; }
+.btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  border: none; border-radius: 10px; padding: 8px 16px;
+  background: rgba(242,107,255,.16); color: var(--neon);
+  font-size: 13px; font-weight: 600; cursor: pointer;
+  transition: .15s;
+}
+.btn:hover { background: rgba(242,107,255,.26); }
+.btn.ghost { background: transparent; border: 1px solid var(--edge); color: var(--dim); font-weight: 400; }
+.btn.small { padding: 5px 10px; font-size: 12px; }
+.chip {
+  display: inline-flex; align-items: center; gap: 5px;
+  border-radius: 999px; padding: 3px 10px; font-size: 11.5px;
+  background: rgba(157,123,255,.12); color: var(--neon-soft);
+}
+.chip.ok { background: rgba(52,211,153,.13); color: var(--ok); }
+.chip.bad { background: rgba(251,113,133,.13); color: var(--bad); }
+.chip.dim { background: rgba(255,255,255,.06); color: var(--dim); }
+.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.muted { color: var(--dim); font-size: 12px; }
+
+/* ===== 装饰：星屑 + 魔使 ===== */
+.spark { position: absolute; color: var(--neon); opacity: .55; pointer-events: none; animation: twinkle 2.6s ease-in-out infinite; }
+@keyframes twinkle { 0%,100% { opacity: .25; transform: scale(.85);} 50% { opacity: .8; transform: scale(1.1);} }
+.mascot { display: inline-block; }
+.mascot svg { width: 64px; height: 64px; }
+
+/* ===== 今天（仪表盘） ===== */
+.hello { position: relative; margin-bottom: 20px; }
+.hello h2 { font-size: 22px; }
+.hello h2 em { font-style: normal; color: var(--neon); }
+.hello .sub { color: var(--dim); font-size: 13px; margin-top: 6px; }
+.statrow { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 16px; }
+.stat { position: relative; padding: 14px 18px; }
+.stat .k { font-size: 12px; color: var(--dim); }
+.stat .v { font-size: 22px; font-weight: 700; margin-top: 4px; }
+.stat .v small { font-size: 12px; color: var(--dim); font-weight: 400; }
+.stat .ic { position: absolute; right: 14px; top: 14px; font-size: 16px; opacity: .8; }
+.dashgrid { display: grid; grid-template-columns: 1.5fr 1fr; gap: 16px; }
+.briefcard { position: relative; overflow: hidden; }
+.briefcard::after {
+  content: ''; position: absolute; right: -40px; top: -40px; width: 140px; height: 140px;
+  background: radial-gradient(closest-side, rgba(242,107,255,.18), transparent); border-radius: 50%;
+}
+.briefcard .excerpt { color: var(--dim); font-size: 13px; line-height: 1.8; margin: 4px 0 14px; }
+.doclist li { display: flex; align-items: center; gap: 10px; padding: 9px 0; border-bottom: 1px solid rgba(44,32,80,.55); list-style: none; }
+.doclist li:last-child { border-bottom: none; }
+.doclist .name { font-size: 13px; }
+.doclist .when { margin-left: auto; font-size: 11px; color: var(--dim); }
+.askbox { display: flex; gap: 10px; margin-top: 12px; }
+.askbox input {
+  flex: 1; background: var(--void); border: 1px solid var(--edge); border-radius: 12px;
+  padding: 11px 14px; color: var(--ink); font-size: 13px; outline: none;
+}
+.askbox input:focus { border-color: var(--neon); box-shadow: 0 0 0 3px rgba(242,107,255,.12); }
+.sugg { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+.usage .bars { display: flex; align-items: flex-end; gap: 8px; height: 90px; padding-top: 8px; }
+.usage .bar { flex: 1; display: flex; flex-direction: column; justify-content: flex-end; gap: 2px; height: 100%; }
+.usage .bar i { border-radius: 4px 4px 0 0; display: block; }
+.usage .bar .c { background: linear-gradient(180deg, var(--neon), rgba(242,107,255,.35)); }
+.usage .bar .e { background: rgba(157,123,255,.4); }
+.usage .bar em { font-style: normal; font-size: 10px; color: var(--dim); text-align: center; }
+
+/* ===== 对话 ===== */
+.chat-page .sessions {
+  width: 220px; flex-shrink: 0; margin-right: 18px;
+  background: rgba(20,16,33,.85); border: 1px solid var(--edge); border-radius: 16px;
+  padding: 12px; display: flex; flex-direction: column;
+}
+.chat-page .sessions .new { margin-bottom: 10px; width: 100%; justify-content: center; }
+.chat-page .sessions li {
+  list-style: none; padding: 9px 12px; border-radius: 10px; font-size: 13px;
+  color: var(--dim); cursor: pointer; margin-bottom: 3px;
+}
+.chat-page .sessions li.on { background: rgba(242,107,255,.12); color: var(--neon); }
+.chatwrap {
+  flex: 1; display: flex; flex-direction: column;
+  background: rgba(20,16,33,.85); border: 1px solid var(--edge); border-radius: 16px;
+  overflow: hidden;
+}
+.msgs { flex: 1; padding: 22px; display: flex; flex-direction: column; gap: 16px; overflow: auto; }
+.msg { max-width: 76%; }
+.msg.user { align-self: flex-end; background: rgba(242,107,255,.14); border: 1px solid rgba(242,107,255,.25); padding: 11px 15px; border-radius: 16px 16px 4px 16px; }
+.msg.ai { align-self: flex-start; background: var(--void); border: 1px solid var(--edge); padding: 13px 16px; border-radius: 16px 16px 16px 4px; line-height: 1.9; font-size: 13.5px; }
+.msg .cite { display: inline-flex; align-items: center; gap: 4px; margin: 3px; padding: 2px 9px; border-radius: 999px; font-size: 11px; background: rgba(157,123,255,.14); color: var(--neon-soft); cursor: pointer; }
+.chatinput { display: flex; gap: 10px; padding: 14px 18px; border-top: 1px solid var(--edge); }
+.chatinput textarea {
+  flex: 1; resize: none; background: var(--void); border: 1px solid var(--edge); border-radius: 12px;
+  padding: 10px 14px; color: var(--ink); font-size: 13px; outline: none; height: 46px;
+}
+.chatinput textarea:focus { border-color: var(--neon); }
+
+/* ===== 知识库 ===== */
+.drop {
+  border: 2px dashed var(--edge); border-radius: 16px; padding: 30px; text-align: center;
+  background: rgba(20,16,33,.85); margin-bottom: 16px; transition: .2s;
+}
+.drop:hover { border-color: var(--neon); background: rgba(242,107,255,.05); }
+.drop .big { font-size: 15px; margin-bottom: 4px; }
+table.doc { width: 100%; border-collapse: collapse; background: rgba(20,16,33,.85); border: 1px solid var(--edge); border-radius: 16px; overflow: hidden; }
+table.doc th { text-align: left; font-size: 11.5px; color: var(--dim); font-weight: 400; padding: 11px 16px; border-bottom: 1px solid var(--edge); }
+table.doc td { padding: 12px 16px; font-size: 13px; border-bottom: 1px solid rgba(44,32,80,.5); }
+table.doc tr:last-child td { border-bottom: none; }
+
+/* ===== 简报 ===== */
+.brieflist .item {
+  background: rgba(20,16,33,.85); border: 1px solid var(--edge); border-radius: 14px;
+  padding: 15px 18px; margin-bottom: 10px; cursor: pointer; transition: .15s;
+}
+.brieflist .item:hover { border-color: rgba(242,107,255,.45); }
+.brieflist .item .row { display: flex; align-items: center; gap: 10px; }
+.brieflist .item .prev { color: var(--dim); font-size: 12.5px; margin-top: 6px; }
+
+/* ===== 任务 ===== */
+.taskgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 18px; }
+.task { position: relative; }
+.task .top { display: flex; align-items: flex-start; gap: 10px; }
+.task .name { font-weight: 600; font-size: 14px; }
+.task .cron { font-size: 12px; color: var(--neon-soft); margin-top: 3px; font-family: ui-monospace, monospace; }
+.task .desc { color: var(--dim); font-size: 12.5px; margin-top: 8px; line-height: 1.7; }
+.task .ops { display: flex; gap: 8px; margin-top: 12px; align-items: center; }
+.switch { width: 38px; height: 21px; border-radius: 999px; background: var(--edge); position: relative; cursor: pointer; flex-shrink: 0; }
+.switch::after { content: ''; position: absolute; width: 15px; height: 15px; border-radius: 50%; background: var(--dim); top: 3px; left: 3px; transition: .2s; }
+.switch.on { background: rgba(242,107,255,.4); }
+.switch.on::after { left: 20px; background: var(--neon); box-shadow: 0 0 8px rgba(242,107,255,.8); }
+.newtask { border-style: dashed; border-color: var(--edge); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; min-height: 132px; color: var(--dim); cursor: pointer; background: transparent; }
+.newtask:hover { border-color: var(--neon); color: var(--neon); }
+.runrec { margin-top: 4px; }
+
+/* ===== 设置 ===== */
+.setgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.setgrid label { display: block; font-size: 12px; color: var(--dim); margin: 12px 0 5px; }
+.setgrid input {
+  width: 100%; background: var(--void); border: 1px solid var(--edge); border-radius: 10px;
+  padding: 9px 12px; color: var(--ink); font-size: 13px; outline: none;
+}
+.setgrid input:focus { border-color: var(--neon); }
+.modelrow { display: flex; align-items: center; padding: 9px 0; border-bottom: 1px solid rgba(44,32,80,.5); font-size: 13px; }
+.modelrow:last-child { border-bottom: none; }
+.modelrow .role { color: var(--dim); width: 150px; }
+.modelrow .m { font-family: ui-monospace, monospace; color: var(--neon-soft); }
+
+/* ===== 登录页 ===== */
+.login { align-items: center; justify-content: center; }
+.login .orb {
+  position: absolute; width: 420px; height: 420px; border-radius: 50%;
+  background: radial-gradient(closest-side, rgba(242,107,255,.16), transparent);
+  filter: blur(6px); pointer-events: none;
+}
+.loginbox {
+  position: relative; width: 400px; padding: 38px 36px; text-align: center;
+  background: rgba(20,16,33,.92); border: 1px solid rgba(242,107,255,.25); border-radius: 22px;
+  box-shadow: 0 0 60px rgba(242,107,255,.12);
+}
+.loginbox h1 { font-size: 24px; letter-spacing: 1px; }
+.loginbox h1 span { color: var(--neon); text-shadow: 0 0 16px rgba(242,107,255,.6); }
+.loginbox .slogan { color: var(--dim); font-size: 12px; margin: 8px 0 26px; }
+.loginbox input {
+  width: 100%; background: var(--void); border: 1px solid var(--edge); border-radius: 12px;
+  padding: 12px 15px; color: var(--ink); font-size: 14px; outline: none; text-align: left;
+}
+.loginbox input:focus { border-color: var(--neon); box-shadow: 0 0 0 3px rgba(242,107,255,.12); }
+.loginbox .btn { width: 100%; justify-content: center; padding: 12px; margin-top: 16px; font-size: 14px; }
+</style>
+</head>
+<body>
+
+<div class="mockbar">
+  <span class="tag">设计稿 <b>A1 · 深色霓虹精修</b>（假数据）</span>
+  <nav class="mocknav">
+    <button data-p="dash" class="on">今天</button>
+    <button data-p="chat">对话</button>
+    <button data-p="kb">知识库</button>
+    <button data-p="brief">简报</button>
+    <button data-p="tasks">任务</button>
+    <button data-p="settings">设置</button>
+    <button data-p="login">登录页</button>
+  </nav>
+  <a href="./a2-neon-explore.html">→ 对比 A2 探索版</a>
+</div>
+
+<!-- ============ 今天（默认首页） ============ -->
+<div class="app on" id="app-dash">
+  <aside class="sidebar">
+    <div class="brand"><h1>Cortxt<span>OS</span></h1><p>自托管个人 AI 工作台</p></div>
+    <nav class="nav">
+      <button class="on">✦ 今天</button><button data-go="chat">◇ 对话</button>
+      <button data-go="kb">◈ 知识库</button><button data-go="brief">▤ 简报</button>
+      <button data-go="tasks">⚙ 任务</button><button data-go="settings">⚑ 设置</button>
+    </nav>
+    <div class="foot"><span class="dot">●</span> daemon v0.1.0 · 在线<br/>Cortxt-Server · 4C/3.7G</div>
+  </aside>
+  <main class="main"><div class="page on">
+    <div class="hello">
+      <span class="spark" style="right:12%;top:-6px;">✦</span>
+      <span class="spark" style="right:4%;top:26px;font-size:10px;animation-delay:1.2s;">✦</span>
+      <h2>晚上好，<em>主人</em> ✦</h2>
+      <div class="sub">9 月 19 日 周五 · 知识库今日有 <b style="color:var(--ink)">3</b> 篇更新 · 简报已生成</div>
+    </div>
+    <div class="statrow">
+      <div class="card stat glow"><div class="k">知识库文档</div><div class="v">128 <small>篇</small></div><div class="ic">📚</div></div>
+      <div class="card stat glow"><div class="k">今日 Token</div><div class="v">4.2<small>万</small></div><div class="ic">⚡</div></div>
+      <div class="card stat glow"><div class="k">活跃任务</div><div class="v">3 <small>个</small></div><div class="ic">⏰</div></div>
+      <div class="card stat glow"><div class="k">对话会话</div><div class="v">17 <small>个</small></div><div class="ic">💬</div></div>
+    </div>
+    <div class="dashgrid">
+      <div style="display:flex;flex-direction:column;gap:16px;">
+        <div class="card glow briefcard">
+          <h3>📰 今日简报 <span class="chip ok">已生成 08:00</span><span class="more" data-go="brief">查看全部 →</span></h3>
+          <p class="excerpt">过去 24h 新增 3 篇文档：<b>《Docker 部署踩坑笔记》</b>记录了国内镜像源配置链；<b>《sqlite-vec 踩坑》</b>分析了绑定式主键问题；<b>《grilling 设计流程》</b>整理了设计树工作法……</p>
+          <button class="btn small">阅读全文</button>
+        </div>
+        <div class="card glow">
+          <h3>💬 快捷提问</h3>
+          <div class="askbox"><input placeholder="问点什么，回车直达对话…" /><button class="btn">发送</button></div>
+          <div class="sugg">
+            <span class="chip">部署踩坑笔记讲了什么？</span>
+            <span class="chip">总结最近 3 天新增内容</span>
+            <span class="chip">sqlite-vec 有哪些坑？</span>
+          </div>
+        </div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:16px;">
+        <div class="card glow">
+          <h3>🕒 最近文档 <span class="more" data-go="kb">全部 →</span></h3>
+          <ul class="doclist">
+            <li><span class="name">Docker 部署踩坑笔记.md</span><span class="chip ok" style="font-size:10px">ready</span><span class="when">10 分钟前</span></li>
+            <li><span class="name">sqlite-vec 踩坑.md</span><span class="chip ok" style="font-size:10px">ready</span><span class="when">1 小时前</span></li>
+            <li><span class="name">grilling 设计流程.md</span><span class="chip ok" style="font-size:10px">ready</span><span class="when">昨天</span></li>
+            <li><span class="name">架构决策记录 ADR.pdf</span><span class="chip dim" style="font-size:10px">queued</span><span class="when">昨天</span></li>
+          </ul>
+        </div>
+        <div class="card glow usage">
+          <h3>⚡ 近 7 日用量 <span class="more">明细 →</span></h3>
+          <div class="bars">
+            <div class="bar"><i class="c" style="height:34%"></i><i class="e" style="height:18%"></i><em>六</em></div>
+            <div class="bar"><i class="c" style="height:52%"></i><i class="e" style="height:22%"></i><em>日</em></div>
+            <div class="bar"><i class="c" style="height:40%"></i><i class="e" style="height:16%"></i><em>一</em></div>
+            <div class="bar"><i class="c" style="height:70%"></i><i class="e" style="height:30%"></i><em>二</em></div>
+            <div class="bar"><i class="c" style="height:58%"></i><i class="e" style="height:24%"></i><em>三</em></div>
+            <div class="bar"><i class="c" style="height:86%"></i><i class="e" style="height:38%"></i><em>四</em></div>
+            <div class="bar"><i class="c" style="height:62%"></i><i class="e" style="height:28%"></i><em>今</em></div>
+          </div>
+          <div class="muted" style="margin-top:8px"><span style="color:var(--neon)">▮</span> 对话&nbsp;&nbsp;<span style="color:var(--neon-soft)">▮</span> 嵌入/后台</div>
+        </div>
+      </div>
+    </div>
+  </div></main>
+</div>
+
+<!-- ============ 对话 ============ -->
+<div class="app" id="app-chat">
+  <aside class="sidebar">
+    <div class="brand"><h1>Cortxt<span>OS</span></h1><p>自托管个人 AI 工作台</p></div>
+    <nav class="nav">
+      <button data-go="dash">✦ 今天</button><button class="on">◇ 对话</button>
+      <button data-go="kb">◈ 知识库</button><button data-go="brief">▤ 简报</button>
+      <button data-go="tasks">⚙ 任务</button><button data-go="settings">⚑ 设置</button>
+    </nav>
+    <div class="foot"><span class="dot">●</span> daemon v0.1.0 · 在线</div>
+  </aside>
+  <main class="main"><div class="page chat-page on">
+    <aside class="sessions">
+      <button class="btn small new">＋ 新对话</button>
+      <li class="on">部署踩坑求助</li><li>sqlite-vec 问题</li><li>知识库问答测试</li><li>周报整理</li>
+    </aside>
+    <div class="chatwrap">
+      <div class="msgs">
+        <div class="msg user">帮我看下部署笔记里 Docker 镜像源怎么配的？</div>
+        <div class="msg ai">根据你的《Docker 部署踩坑笔记》，国内环境建议按链路依次回退配置镜像源：<br><br>1. 优先走腾讯云内网源 <b>mirror.ccs.tencentyun.com</b>（服务器上零延迟）；<br>2. 失效时回退阿里云 / 清华镜像站；<br>3. 容器内 pnpm 同步切到 npmmirror。<br><br>
+          <span class="cite">[1] 📄 Docker 部署踩坑笔记 · §镜像源</span><span class="cite">[2] 📄 部署脚本设计 · p3</span>
+        </div>
+        <div class="msg user">那 better-sqlite3 编译失败是怎么回事？</div>
+        <div class="msg ai" style="border-color:rgba(242,107,255,.4)">正在检索知识库中<span style="animation:twinkle 1s infinite;display:inline-block">✦</span></div>
+      </div>
+      <div class="chatinput">
+        <textarea placeholder="问点什么…（Enter 发送）"></textarea>
+        <button class="btn">发送</button>
+      </div>
+    </div>
+  </div></main>
+</div>
+
+<!-- ============ 知识库 ============ -->
+<div class="app" id="app-kb">
+  <aside class="sidebar">
+    <div class="brand"><h1>Cortxt<span>OS</span></h1><p>自托管个人 AI 工作台</p></div>
+    <nav class="nav">
+      <button data-go="dash">✦ 今天</button><button data-go="chat">◇ 对话</button>
+      <button class="on">◈ 知识库</button><button data-go="brief">▤ 简报</button>
+      <button data-go="tasks">⚙ 任务</button><button data-go="settings">⚑ 设置</button>
+    </nav>
+    <div class="foot"><span class="dot">●</span> daemon v0.1.0 · 在线</div>
+  </aside>
+  <main class="main"><div class="page on">
+    <div class="drop">
+      <div class="big">📂 把文件拖进来</div>
+      <div class="muted">支持 .md / .txt / .pdf · 单文件 ≤ 50MB · 重复内容自动幂等</div>
+      <button class="btn small" style="margin-top:12px">选择文件</button>
+    </div>
+    <table class="doc">
+      <tr><th>文档</th><th>大小</th><th>状态</th><th>更新时间</th><th style="text-align:right">操作</th></tr>
+      <tr><td>Docker 部署踩坑笔记.md</td><td class="muted">12.4 KB</td><td><span class="chip ok">ready</span></td><td class="muted">10 分钟前</td><td style="text-align:right"><span class="chip dim" style="cursor:pointer">编辑</span> <span class="chip bad" style="cursor:pointer">删除</span></td></tr>
+      <tr><td>sqlite-vec 踩坑.md</td><td class="muted">8.1 KB</td><td><span class="chip ok">ready</span></td><td class="muted">1 小时前</td><td style="text-align:right"><span class="chip dim" style="cursor:pointer">编辑</span> <span class="chip bad" style="cursor:pointer">删除</span></td></tr>
+      <tr><td>grilling 设计流程.md</td><td class="muted">15.9 KB</td><td><span class="chip ok">ready</span></td><td class="muted">昨天</td><td style="text-align:right"><span class="chip dim" style="cursor:pointer">编辑</span> <span class="chip bad" style="cursor:pointer">删除</span></td></tr>
+      <tr><td>架构决策记录 ADR.pdf</td><td class="muted">2.3 MB</td><td><span class="chip dim">queued</span></td><td class="muted">昨天</td><td style="text-align:right"><span class="chip dim" style="cursor:pointer">编辑</span> <span class="chip bad" style="cursor:pointer">删除</span></td></tr>
+      <tr><td>扫描件_合同.pdf</td><td class="muted">4.8 MB</td><td><span class="chip bad">failed · 无可抽取文本</span></td><td class="muted">前天</td><td style="text-align:right"><span class="chip dim" style="cursor:pointer">重试</span> <span class="chip bad" style="cursor:pointer">删除</span></td></tr>
+    </table>
+  </div></main>
+</div>
+
+<!-- ============ 简报 ============ -->
+<div class="app" id="app-brief">
+  <aside class="sidebar">
+    <div class="brand"><h1>Cortxt<span>OS</span></h1><p>自托管个人 AI 工作台</p></div>
+    <nav class="nav">
+      <button data-go="dash">✦ 今天</button><button data-go="chat">◇ 对话</button>
+      <button data-go="kb">◈ 知识库</button><button class="on">▤ 简报</button>
+      <button data-go="tasks">⚙ 任务</button><button data-go="settings">⚑ 设置</button>
+    </nav>
+    <div class="foot"><span class="dot">●</span> daemon v0.1.0 · 在线</div>
+  </aside>
+  <main class="main"><div class="page on" style="max-width:760px">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+      <h2 style="font-size:17px">每日简报</h2><button class="btn small">立即生成</button>
+    </div>
+    <div class="brieflist">
+      <div class="item"><div class="row"><b style="font-size:13.5px">9 月 19 日 · 知识库日报</b><span class="chip ok">success</span><span class="muted" style="margin-left:auto">今早 08:00 · 12s</span></div><div class="prev">过去 24h 新增 3 篇：Docker 镜像源配置链 / sqlite-vec 主键问题分析 / grilling 设计树工作法…</div></div>
+      <div class="item"><div class="row"><b style="font-size:13.5px">9 月 18 日 · 知识库日报</b><span class="chip ok">success</span><span class="muted" style="margin-left:auto">昨天 08:00 · 9s</span></div><div class="prev">新增 2 篇：ADR 0001–0004 决策记录 / 响应式断点规划。1 篇变更…</div></div>
+      <div class="item"><div class="row"><b style="font-size:13.5px">9 月 17 日 · 知识库日报</b><span class="chip bad">failed</span><span class="muted" style="margin-left:auto">前天 08:00</span></div><div class="prev">生成失败：LLM API 超时（可在任务页重试）</div></div>
+    </div>
+  </div></main>
+</div>
+
+<!-- ============ 任务（新页面） ============ -->
+<div class="app" id="app-tasks">
+  <aside class="sidebar">
+    <div class="brand"><h1>Cortxt<span>OS</span></h1><p>自托管个人 AI 工作台</p></div>
+    <nav class="nav">
+      <button data-go="dash">✦ 今天</button><button data-go="chat">◇ 对话</button>
+      <button data-go="kb">◈ 知识库</button><button data-go="brief">▤ 简报</button>
+      <button class="on">⚙ 任务</button><button data-go="settings">⚑ 设置</button>
+    </nav>
+    <div class="foot"><span class="dot">●</span> daemon v0.1.0 · 在线</div>
+  </aside>
+  <main class="main"><div class="page on">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+      <h2 style="font-size:17px">定时任务</h2><button class="btn small">＋ 新建任务</button>
+    </div>
+    <div class="taskgrid">
+      <div class="card glow task">
+        <div class="top"><div style="flex:1"><div class="name">每日简报</div><div class="cron">每天 08:00</div></div><div class="switch on"></div></div>
+        <div class="desc">扫描过去 24h 新增/变更文档，生成知识库日报 → 简报页</div>
+        <div class="ops"><button class="btn small ghost">改时间</button><button class="btn small">立即运行</button><span class="muted" style="margin-left:auto">上次：今早 08:00 <span style="color:var(--ok)">✓</span></span></div>
+      </div>
+      <div class="card glow task">
+        <div class="top"><div style="flex:1"><div class="name">晚间新增总结</div><div class="cron">每天 22:00</div></div><div class="switch on"></div></div>
+        <div class="desc">总结今天新增的文档，用三句话告诉我今天学了什么 → 任务记录</div>
+        <div class="ops"><button class="btn small ghost">改时间</button><button class="btn small">立即运行</button><span class="muted" style="margin-left:auto">上次：昨晚 22:00 <span style="color:var(--ok)">✓</span></span></div>
+      </div>
+      <div class="card glow task">
+        <div class="top"><div style="flex:1"><div class="name">每周知识库周报</div><div class="cron">每周一 09:00</div></div><div class="switch"></div></div>
+        <div class="desc">汇总上周全部变更文档，按主题归类输出周报</div>
+        <div class="ops"><button class="btn small ghost">改时间</button><button class="btn small">立即运行</button><span class="muted" style="margin-left:auto">已停用</span></div>
+      </div>
+      <div class="card newtask" style="border:2px dashed var(--edge)">＋ 新建任务<br/><span style="font-size:12px">填提示词 · 选时间 · 到点自动跑</span></div>
+    </div>
+    <h3 style="font-size:14px;margin:20px 0 10px">运行记录</h3>
+    <table class="doc runrec">
+      <tr><th>任务</th><th>触发</th><th>状态</th><th>耗时</th><th style="text-align:right">时间</th></tr>
+      <tr><td>每日简报</td><td class="muted">定时</td><td><span class="chip ok">success</span></td><td class="muted">12s</td><td class="muted" style="text-align:right">今早 08:00</td></tr>
+      <tr><td>晚间新增总结</td><td class="muted">手动</td><td><span class="chip ok">success</span></td><td class="muted">8s</td><td class="muted" style="text-align:right">昨晚 21:42</td></tr>
+      <tr><td>每日简报</td><td class="muted">定时</td><td><span class="chip bad">failed · API 超时</span></td><td class="muted">60s</td><td class="muted" style="text-align:right">前天 08:00</td></tr>
+    </table>
+  </div></main>
+</div>
+
+<!-- ============ 设置 ============ -->
+<div class="app" id="app-settings">
+  <aside class="sidebar">
+    <div class="brand"><h1>Cortxt<span>OS</span></h1><p>自托管个人 AI 工作台</p></div>
+    <nav class="nav">
+      <button data-go="dash">✦ 今天</button><button data-go="chat">◇ 对话</button>
+      <button data-go="kb">◈ 知识库</button><button data-go="brief">▤ 简报</button>
+      <button data-go="tasks">⚙ 任务</button><button class="on">⚑ 设置</button>
+    </nav>
+    <div class="foot"><span class="dot">●</span> daemon v0.1.0 · 在线</div>
+  </aside>
+  <main class="main"><div class="page on" style="max-width:860px">
+    <div class="setgrid">
+      <div class="card glow">
+        <h3>🔑 修改密码</h3>
+        <label>当前密码</label><input type="password" value="............" />
+        <label>新密码</label><input type="password" placeholder="至少 8 位" />
+        <label>确认新密码</label><input type="password" />
+        <button class="btn" style="margin-top:14px">更新密码</button>
+      </div>
+      <div class="card glow">
+        <h3>🤖 模型阵容 <span class="chip dim">key 只存服务器</span></h3>
+        <div class="modelrow"><span class="role">primary · 主力对话</span><span class="m">deepseek-v4-pro-0813</span></div>
+        <div class="modelrow"><span class="role">background · 后台</span><span class="m">deepseek-v4-flash-0731</span></div>
+        <div class="modelrow"><span class="role">vision · 视觉</span><span class="m">qwen3.6-flash</span></div>
+        <div class="modelrow"><span class="role">embedding · 嵌入</span><span class="m">text-embedding-3-large</span></div>
+        <div class="muted" style="margin-top:10px">编辑阵容与手动换档 → M2 开放</div>
+      </div>
+    </div>
+  </div></main>
+</div>
+
+<!-- ============ 登录页 ============ -->
+<div class="app login" id="app-login">
+  <div class="orb" style="left:calc(50% - 210px); top:calc(50% - 210px)"></div>
+  <div class="loginbox">
+    <span class="spark" style="left:8%;top:12%;">✦</span>
+    <span class="spark" style="right:10%;top:30%;font-size:10px;animation-delay:.9s;">✦</span>
+    <span class="spark" style="left:14%;bottom:18%;font-size:12px;animation-delay:1.6s;">✦</span>
+    <span class="mascot"><svg viewBox="0 0 64 64"><path d="M32 8c-12 0-20 9-20 21v21c0 3 3 4 5 2l4-4 5 5c2 2 4 2 6 0l5-5 4 4c2 2 5 1 5-2V29c0-12-8-21-20-21z" fill="rgba(242,107,255,.18)" stroke="#f26bff" stroke-width="2"/><circle cx="25" cy="30" r="2.6" fill="#f26bff"/><circle cx="39" cy="30" r="2.6" fill="#f26bff"/><path d="M27 38q5 4 10 0" stroke="#f26bff" stroke-width="2" fill="none" stroke-linecap="round"/></svg></span>
+    <h1>Cortxt<span>OS</span></h1>
+    <div class="slogan">你的大脑皮层，正在待机 ✦</div>
+    <input type="password" placeholder="登录密码" />
+    <button class="btn">进入工作台</button>
+  </div>
+</div>
+
+<script>
+const pages = ['dash','chat','kb','brief','tasks','settings','login'];
+function go(p) {
+  pages.forEach(x => document.getElementById('app-'+x).classList.toggle('on', x === p));
+  document.querySelectorAll('.mocknav button').forEach(b => b.classList.toggle('on', b.dataset.p === p));
+}
+document.querySelectorAll('.mocknav button').forEach(b => b.onclick = () => go(b.dataset.p));
+document.querySelectorAll('[data-go]').forEach(b => b.onclick = () => go(b.dataset.go));
+</script>
+</body>
+</html>
