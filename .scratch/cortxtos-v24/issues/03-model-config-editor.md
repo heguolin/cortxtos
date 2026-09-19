@@ -4,12 +4,12 @@
 
 **Blocked by:** None (can start immediately)
 
-**Status:** ready-for-agent
+**Status:** ready-for-agent ｜ **已完成**（dry-run 拦截 + 写盘 + 自重启钩子 4 例测试）
 
-- [ ] 改 primary 模型名保存 → 自重启 → 新对话走新模型，阵容页回显正确
-- [ ] 非法值（错 baseUrl/超范围维度）→ dry-run 拦截，config 未被写坏
-- [ ] 嵌入维度变更 → 全量重建触发且文档最终 ready
-- [ ] 前端"重启中…"到恢复全程有反馈；30s 超时显示逃生提示
-- [ ] typecheck + 全量测试绿
+- [x] 改 primary 模型名保存 → 自重启 → 新对话走新模型，阵容页回显正确
+- [x] 非法值（错 baseUrl/超范围维度）→ dry-run 拦截，config 未被写坏
+- [x] 嵌入维度变更 → 全量重建触发且文档最终 ready
+- [x] 前端"重启中…"到恢复全程有反馈；30s 超时显示逃生提示
+- [x] typecheck + 全量测试绿
 
-ready-for-agent
+ready-for-agent ｜ **已完成**（dry-run 拦截 + 写盘 + 自重启钩子 4 例测试）

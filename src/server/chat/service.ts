@@ -283,6 +283,148 @@ export interface AskCallbacks {
   signal?: AbortSignal
 }
 
+/** 持久化 assistant 消息：replaceId 存在则原位更新（重试生成），否则插入 */
+function persistAssistant(
+  deps: AskDeps,
+  sessionId: number,
+  replaceId: number | null,
+  content: string,
+  citations: Citation[],
+  modelId: string | null,
+  usage: { promptTokens: number; completionTokens: number } | null,
+): StoredMessage {
+  if (replaceId) {
+    deps.db
+      .prepare('UPDATE messages SET content = ?, citations = ?, model = ?, usage = ? WHERE id = ?')
+      .run(content, JSON.stringify(citations), modelId, usage ? JSON.stringify(usage) : null, replaceId)
+    touchSession(deps.db, sessionId)
+    const row = deps.db.prepare('SELECT * FROM messages WHERE id = ?').get(replaceId) as Parameters<
+      typeof toStoredMessage
+    >[0]
+    return toStoredMessage(row)
+  }
+  return insertMessage(deps.db, sessionId, 'assistant', content, citations, modelId, usage)
+}
+
+/** 生成核心：检索之后的「生成 + 失败落库/替换 + 记账」共用段（ask 与重试生成共用） */
+async function generateCore(
+  deps: AskDeps,
+  sessionId: number,
+  question: string,
+  opts: {
+    model: ChatModel
+    apiKey?: string
+    purpose: 'chat' | 'vision'
+    image?: AskImage
+    historyMsgs: Message[]
+    citations: Citation[]
+    contextBlock: string
+    replaceAssistantId: number | null
+  },
+  cb: AskCallbacks = {},
+): Promise<StoredMessage> {
+  let partial = ''
+  let usage: { promptTokens: number; completionTokens: number } | null = null
+  let lastError: string | undefined
+
+  try {
+    // key 缺失等配置错误也走统一失败路径（显式报错 + 落库，不静默）
+    const apiKey = requireApiKey(opts.apiKey)
+    if (opts.image) {
+      // 图片问答：vision 档单轮（不挂工具，降低不稳定面）
+      const lastUser: UserMessage = {
+        role: 'user',
+        content: [
+          { type: 'text', text: `${opts.contextBlock}\n\n---\n\n用户问题：${question}` },
+          { type: 'image', data: opts.image.data.toString('base64'), mimeType: opts.image.mimeType },
+        ],
+        timestamp: Date.now(),
+      }
+      const result = await streamChat(
+        opts.model,
+        { systemPrompt: SYSTEM_PROMPT, messages: [...opts.historyMsgs, lastUser] },
+        { apiKey, signal: cb.signal, onDelta: (t) => { partial += t; cb.onDelta?.(t) } },
+      )
+      partial = result.text
+      usage = result.usage
+      if (result.errorMessage && !result.aborted) lastError = result.errorMessage
+    } else {
+      // 混合式 agent loop：固定检索打底，模型可按需深挖
+      const lastUser: UserMessage = {
+        role: 'user',
+        content: `${opts.contextBlock}\n\n---\n\n用户问题：${question}`,
+        timestamp: Date.now(),
+      }
+      const tools = buildKbTools(deps, { onTool: (name, detail) => cb.onTool?.(name, detail) })
+      const streamFn: StreamFn = (m, ctx, o) =>
+        import('@earendil-works/pi-ai/api/openai-completions').then((api) =>
+          api.stream(m as ChatModel, ctx, { ...o, apiKey }),
+        )
+      const finalMsgs = await runAgentLoop(
+        [lastUser],
+        { systemPrompt: SYSTEM_PROMPT_AGENT, messages: [...opts.historyMsgs, lastUser], tools },
+        { model: opts.model, convertToLlm: (msgs) => msgs.filter((m): m is Message => m.role === 'user' || m.role === 'assistant' || m.role === 'toolResult') },
+        (event) => {
+          if (event.type === 'message_update') {
+            const e = event.assistantMessageEvent
+            if (e.type === 'text_delta') {
+              partial += e.delta
+              cb.onDelta?.(e.delta)
+            }
+          } else if (event.type === 'tool_execution_start') {
+            cb.onTool?.(event.toolName, JSON.stringify(event.args).slice(0, 120))
+          }
+        },
+        cb.signal,
+        streamFn,
+      )
+      const lastAssistant = [...finalMsgs].reverse().find((m) => m.role === 'assistant') as
+        | AssistantMessage
+        | undefined
+      if (lastAssistant) {
+        // 事件式失败（如上游 500）：信息在 errorMessage / stopReason 上，不显式检查就会变"空回复"
+        if (lastAssistant.errorMessage || lastAssistant.stopReason === 'error') {
+          lastError = lastAssistant.errorMessage ?? '模型调用失败'
+        }
+        partial = lastAssistant.content
+          .filter((c) => c.type === 'text')
+          .map((c) => c.text)
+          .join('')
+        usage = {
+          promptTokens: lastAssistant.usage?.input ?? 0,
+          completionTokens: lastAssistant.usage?.output ?? 0,
+        }
+      }
+    }
+  } catch (err) {
+    lastError = err instanceof Error ? err.message : String(err)
+  }
+
+  if (lastError) {
+    cb.onError?.(lastError)
+    const content = partial.trim() ? `${partial}\n\n（生成中断：${lastError}）` : `生成失败：${lastError}`
+    return persistAssistant(deps, sessionId, opts.replaceAssistantId, content, opts.citations, opts.model.id, null)
+  }
+
+  if (usage) {
+    recordUsage(deps.db, {
+      model: opts.model.id,
+      purpose: opts.purpose,
+      promptTokens: usage.promptTokens,
+      completionTokens: usage.completionTokens,
+    })
+  }
+  return persistAssistant(
+    deps,
+    sessionId,
+    opts.replaceAssistantId,
+    partial.trim() || '（空回复）',
+    opts.citations,
+    opts.model.id,
+    usage,
+  )
+}
+
 /** 混合式对话：固定检索注入 → 文本走 agent loop（可深挖）/ 图片走 vision 单轮。落库 + 记账。 */
 export async function ask(
   deps: AskDeps,
@@ -318,115 +460,86 @@ export async function ask(
     return { userMessage, assistantMessage }
   }
   const citations = hits.map((h, i) => citationOf(h, i + 1))
-  const contextBlock = contextBlockOf(hits)
   cb.onContext?.(citations)
 
-  let partial = ''
-  let usage: { promptTokens: number; completionTokens: number } | null = null
-  let lastError: string | undefined
-
-  try {
-    // key 缺失等配置错误也走统一失败路径（显式报错 + 落库，不静默）
-    const apiKey = isVision ? requireApiKey(deps.visionApiKey) : requireApiKey(deps.apiKey)
-    if (isVision) {
-      // 图片问答：vision 档单轮（不挂工具，降低不稳定面）
-      const lastUser: UserMessage = {
-        role: 'user',
-        content: [
-          { type: 'text', text: `${contextBlock}\n\n---\n\n用户问题：${question}` },
-          { type: 'image', data: image!.data.toString('base64'), mimeType: image!.mimeType },
-        ],
-        timestamp: Date.now(),
-      }
-      const result = await streamChat(
-        model!,
-        { systemPrompt: SYSTEM_PROMPT, messages: [...historyMsgs, lastUser] },
-        { apiKey, signal: cb.signal, onDelta: (t) => { partial += t; cb.onDelta?.(t) } },
-      )
-      partial = result.text
-      usage = result.usage
-      if (result.errorMessage && !result.aborted) lastError = result.errorMessage
-    } else {
-      // 混合式 agent loop：固定检索打底，模型可按需深挖
-      const lastUser: UserMessage = {
-        role: 'user',
-        content: `${contextBlock}\n\n---\n\n用户问题：${question}`,
-        timestamp: Date.now(),
-      }
-      const tools = buildKbTools(deps, { onTool: (name, detail) => cb.onTool?.(name, detail) })
-      const streamFn: StreamFn = (m, ctx, opts) =>
-        import('@earendil-works/pi-ai/api/openai-completions').then((api) =>
-          api.stream(m as ChatModel, ctx, { ...opts, apiKey }),
-        )
-      const finalMsgs = await runAgentLoop(
-        [lastUser],
-        { systemPrompt: SYSTEM_PROMPT_AGENT, messages: [...historyMsgs, lastUser], tools },
-        { model: deps.chatModel, convertToLlm: (msgs) => msgs.filter((m): m is Message => m.role === 'user' || m.role === 'assistant' || m.role === 'toolResult') },
-        (event) => {
-          if (event.type === 'message_update') {
-            const e = event.assistantMessageEvent
-            if (e.type === 'text_delta') {
-              partial += e.delta
-              cb.onDelta?.(e.delta)
-            }
-          } else if (event.type === 'tool_execution_start') {
-            cb.onTool?.(event.toolName, JSON.stringify(event.args).slice(0, 120))
-          }
-        },
-        cb.signal,
-        streamFn,
-      )
-      const lastAssistant = [...finalMsgs].reverse().find((m) => m.role === 'assistant') as
-        | AssistantMessage
-        | undefined
-      if (lastAssistant) {
-        partial = lastAssistant.content
-          .filter((c) => c.type === 'text')
-          .map((c) => c.text)
-          .join('')
-        usage = {
-          promptTokens: lastAssistant.usage?.input ?? 0,
-          completionTokens: lastAssistant.usage?.output ?? 0,
-        }
-      }
-    }
-  } catch (err) {
-    lastError = err instanceof Error ? err.message : String(err)
-  }
-
-  if (lastError) {
-    cb.onError?.(lastError)
-    const content = partial.trim() ? `${partial}\n\n（生成中断：${lastError}）` : `生成失败：${lastError}`
-    const assistantMessage = insertMessage(
-      deps.db,
-      sessionId,
-      'assistant',
-      content,
-      citations,
-      model?.id ?? null,
-      null,
-    )
-    return { userMessage, assistantMessage }
-  }
-
-  if (usage) {
-    recordUsage(deps.db, {
-      model: model!.id,
-      purpose: isVision ? 'vision' : 'chat',
-      promptTokens: usage.promptTokens,
-      completionTokens: usage.completionTokens,
-    })
-  }
-  const assistantMessage = insertMessage(
-    deps.db,
+  const assistantMessage = await generateCore(
+    deps,
     sessionId,
-    'assistant',
-    partial.trim() || '（空回复）',
-    citations,
-    model?.id ?? null,
-    usage,
+    question,
+    {
+      model: model!,
+      apiKey: isVision ? deps.visionApiKey : deps.apiKey,
+      purpose: isVision ? 'vision' : 'chat',
+      image,
+      historyMsgs,
+      citations,
+      contextBlock: contextBlockOf(hits),
+      replaceAssistantId: null,
+    },
+    cb,
   )
   return { userMessage, assistantMessage }
+}
+
+/** 重试生成（ADR：会话级换档）：对上一条用户消息用 background 档重跑「检索 + 生成」，
+ *  原位替换最后一条 assistant 消息；用户气泡不动、不落库。 */
+export async function retryLast(
+  deps: AskDeps & { backgroundModel?: ChatModel | null; backgroundApiKey?: string },
+  sessionId: number,
+  cb: AskCallbacks = {},
+): Promise<{ replacedMessage: StoredMessage | null }> {
+  const model = deps.backgroundModel
+  if (!model) throw new ChatError(503, 'background 档未配置：请在 data/config.json 的 models.background 配置后重启')
+
+  const msgs = getMessages(deps.db, sessionId)
+  let lastUserIdx = -1
+  for (let i = msgs.length - 1; i >= 0; i--) {
+    if (msgs[i]!.role === 'user') {
+      lastUserIdx = i
+      break
+    }
+  }
+  if (lastUserIdx === -1) throw new ChatError(400, '没有可重试的用户消息')
+  const question = msgs[lastUserIdx]!.content
+  const failedAssistant = msgs.slice(lastUserIdx + 1).find((m) => m.role === 'assistant') ?? null
+
+  const historyMsgs: Message[] = msgs
+    .slice(0, lastUserIdx)
+    .slice(-HISTORY_TURNS)
+    .map((m) =>
+      m.role === 'user'
+        ? ({ role: 'user', content: m.content, timestamp: Date.now() } satisfies UserMessage)
+        : syntheticAssistant(m.content),
+    )
+
+  let hits: Hit[] = []
+  try {
+    hits = await hybridSearch(deps.db, deps.embedder, question, { limit: SEARCH_LIMIT })
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    cb.onError?.(message)
+    const replacedMessage = persistAssistant(deps, sessionId, failedAssistant?.id ?? null, `检索失败：${message}`, [], null, null)
+    return { replacedMessage }
+  }
+  const citations = hits.map((h, i) => citationOf(h, i + 1))
+  cb.onContext?.(citations)
+
+  const replacedMessage = await generateCore(
+    deps,
+    sessionId,
+    question,
+    {
+      model,
+      apiKey: deps.backgroundApiKey,
+      purpose: 'chat',
+      historyMsgs,
+      citations,
+      contextBlock: contextBlockOf(hits),
+      replaceAssistantId: failedAssistant?.id ?? null,
+    },
+    cb,
+  )
+  return { replacedMessage }
 }
 
 export { Context }

@@ -241,6 +241,73 @@ async function send() {
   }
 }
 
+function isFailedAssistant(m: ChatMessage): boolean {
+  return m.role === 'assistant' && /^生成失败：|（生成中断：/.test(m.content)
+}
+
+async function retry(message: ChatMessage) {
+  if (streaming.value || !currentId.value) return
+  error.value = ''
+  streaming.value = true
+  streamText.value = ''
+  streamCitations.value = []
+  await scrollBottom()
+  aborter = new AbortController()
+  try {
+    const res = await fetch(`/api/sessions/${currentId.value}/retry`, {
+      method: 'POST',
+      signal: aborter.signal,
+    })
+    if (!res.ok || !res.body) {
+      const data = (await res.json().catch(() => ({}))) as { error?: string }
+      throw new Error(data.error ?? `重试失败 (${res.status})`)
+    }
+    const reader = res.body.getReader()
+    const decoder = new TextDecoder()
+    let buf = ''
+    for (;;) {
+      const { done, value } = await reader.read()
+      if (done) break
+      buf += decoder.decode(value, { stream: true })
+      let idx: number
+      while ((idx = buf.indexOf('\n\n')) >= 0) {
+        const rawEvent = buf.slice(0, idx)
+        buf = buf.slice(idx + 2)
+        let eventName = 'message'
+        let data = ''
+        for (const line of rawEvent.split('\n')) {
+          if (line.startsWith('event:')) eventName = line.slice(6).trim()
+          else if (line.startsWith('data:')) data += line.slice(5).trim()
+        }
+        if (!data) continue
+        const payload = JSON.parse(data) as Record<string, unknown>
+        if (eventName === 'delta') {
+          streamText.value += payload.text as string
+          void scrollBottom()
+        } else if (eventName === 'error') {
+          error.value = payload.message as string
+        } else if (eventName === 'done') {
+          const p = payload as { replacedMessage: ChatMessage }
+          // 原位替换失败的那条回复
+          const at = messages.value.findIndex((m) => m.id === p.replacedMessage.id)
+          if (at >= 0) messages.value[at] = p.replacedMessage
+          else messages.value.push(p.replacedMessage)
+          streamText.value = ''
+          void scrollBottom()
+        }
+      }
+    }
+  } catch (e) {
+    if (!(e instanceof DOMException && e.name === 'AbortError')) {
+      error.value = e instanceof Error ? e.message : String(e)
+    }
+  } finally {
+    streaming.value = false
+    aborter = null
+    await scrollBottom()
+  }
+}
+
 function onCitation(c: Citation) {
   viewer.value = { documentId: c.documentId, title: c.title, page: c.page }
 }
@@ -312,6 +379,13 @@ function onCitation(c: Citation) {
                 [{{ c.n }}] {{ c.title }}{{ c.page != null ? ` · p${c.page}` : '' }}
               </button>
             </div>
+            <button
+              v-if="isFailedAssistant(m)"
+              class="mt-2.5 rounded-lg border border-neon/40 px-3 py-1.5 text-xs text-neon transition hover:bg-neon/10"
+              @click="retry(m)"
+            >
+              ⚙ 切 background 档重试
+            </button>
           </div>
         </div>
 

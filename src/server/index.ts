@@ -110,6 +110,8 @@ async function boot(): Promise<void> {
     chatApiKeyEnv: config.models.primary.apiKeyEnv,
     visionModel: config.models.vision ? buildChatModel(config.models.vision, { supportsImages: true }) : null,
     visionApiKeyEnv: config.models.vision?.apiKeyEnv ?? 'LLM_API_KEY',
+    backgroundModel,
+    backgroundApiKeyEnv: config.models.background.apiKeyEnv,
     scheduler,
     configPath: layout.configPath,
     // ADR 0007：阵容保存成功后延迟退出，Docker/tsx 自动拉起

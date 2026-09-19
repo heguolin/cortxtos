@@ -8,6 +8,7 @@ import {
   getMessages,
   getSession,
   listSessions,
+  retryLast,
   type AskImage,
 } from '../chat/service.js'
 import type { ServerDeps } from '../types.js'
@@ -123,6 +124,67 @@ export function chatRouter(deps: ServerDeps): Hono {
           event: 'done',
           data: JSON.stringify({ userMessage, assistantMessage }),
         })
+      } catch (err) {
+        await chain.catch(() => {})
+        closed = true
+        await stream
+          .writeSSE({
+            event: 'error',
+            data: JSON.stringify({ message: err instanceof Error ? err.message : String(err) }),
+          })
+          .catch(() => {})
+      }
+    })
+  })
+
+  // 重试生成（ADR：会话级换档）：用 background 档对上一条用户消息重跑，原位替换失败回复
+  r.post('/api/sessions/:id/retry', async (c) => {
+    const chatModel = deps.backgroundModel
+    const embedder = deps.embedder
+    if (!chatModel || !embedder) throw new ChatError(503, 'background 档未就绪（测试环境或未配置）')
+    const session = getSession(deps.db, Number(c.req.param('id')))
+    // 在 SSE 头发出前校验（否则错误只能以 200 事件流呈现）
+    if (!getMessages(deps.db, session.id).some((m) => m.role === 'user')) {
+      throw new ChatError(400, '没有可重试的用户消息')
+    }
+
+    const ac = new AbortController()
+    return streamSSE(c, async (stream) => {
+      stream.onAbort(() => ac.abort())
+      let chain: Promise<void> = Promise.resolve()
+      let closed = false
+      const safeWrite = (event: string, data: unknown) => {
+        if (closed) return
+        chain = chain
+          .then(() => stream.writeSSE({ event, data: JSON.stringify(data) }))
+          .catch(() => {
+            closed = true
+            ac.abort()
+          })
+      }
+      try {
+        const { replacedMessage } = await retryLast(
+          {
+            db: deps.db,
+            embedder,
+            chatModel,
+            apiKey: process.env[deps.chatApiKeyEnv ?? 'LLM_API_KEY'],
+            backgroundModel: chatModel,
+            backgroundApiKey: process.env[deps.backgroundApiKeyEnv ?? 'LLM_API_KEY'],
+            vaultDir: deps.vaultDir,
+          },
+          session.id,
+          {
+            signal: ac.signal,
+            onContext: (citations) => safeWrite('citations', { citations }),
+            onDelta: (text) => safeWrite('delta', { text }),
+            onError: (message) => safeWrite('error', { message }),
+            onTool: (name, detail) => safeWrite('tool', { name, detail }),
+          },
+        )
+        await chain
+        closed = true
+        await stream.writeSSE({ event: 'done', data: JSON.stringify({ replacedMessage }) })
       } catch (err) {
         await chain.catch(() => {})
         closed = true
