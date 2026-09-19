@@ -8,8 +8,12 @@ import {
   getMessages,
   getSession,
   listSessions,
+  type AskImage,
 } from '../chat/service.js'
 import type { ServerDeps } from '../types.js'
+
+const IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp'])
+const IMAGE_MAX_BYTES = 10 * 1024 * 1024
 
 export function chatRouter(deps: ServerDeps): Hono {
   const r = new Hono()
@@ -39,25 +43,46 @@ export function chatRouter(deps: ServerDeps): Hono {
     return c.body(null, 204)
   })
 
-  // 固定管线 + SSE：citations → delta* → done / error
+  // 混合式对话 + SSE：citations → tool* → delta* → done / error
+  // 图片问答走 multipart（content + image）；纯文本走 JSON（兼容既有客户端）
   r.post('/api/sessions/:id/messages', async (c) => {
     const chatModel = deps.chatModel
     const embedder = deps.embedder
     if (!chatModel || !embedder) throw new ChatError(503, '对话依赖未就绪（测试环境）')
-    const body = await c.req
-      .json<{ content?: string }>()
-      .catch(() => ({}) as { content?: string })
-    const question = body.content?.trim()
+
+    const contentType = c.req.header('content-type') ?? ''
+    let question = ''
+    let image: AskImage | undefined
+    if (contentType.includes('multipart/form-data')) {
+      const body = await c.req.parseBody().catch(() => {
+        throw new ChatError(400, '请求格式错误')
+      })
+      question = typeof body['content'] === 'string' ? (body['content'] as string).trim() : ''
+      const file = body['image']
+      if (file instanceof File && file.size > 0) {
+        if (!IMAGE_TYPES.has(file.type)) throw new ChatError(400, '仅支持 jpg / png / webp 图片')
+        if (file.size > IMAGE_MAX_BYTES) throw new ChatError(400, '图片超过 10MB 上限')
+        image = { data: Buffer.from(await file.arrayBuffer()), mimeType: file.type }
+      }
+    } else {
+      const body = await c.req
+        .json<{ content?: string }>()
+        .catch(() => ({}) as { content?: string })
+      question = body.content?.trim() ?? ''
+    }
     if (!question) throw new ChatError(400, '缺少 content')
+
     const session = getSession(deps.db, Number(c.req.param('id')))
     if (session.title === '新会话') {
       deps.db.prepare('UPDATE sessions SET title = ? WHERE id = ?').run(question.slice(0, 20), session.id)
     }
 
+    const visionModel = deps.visionModel
+    const visionApiKey = process.env[deps.visionApiKeyEnv ?? 'LLM_API_KEY']
+
     const ac = new AbortController()
     return streamSSE(c, async (stream) => {
       stream.onAbort(() => ac.abort())
-      // 串行化 delta 写入，保证 SSE 顺序
       let chain: Promise<void> = Promise.resolve()
       let closed = false
       const safeWrite = (event: string, data: unknown) => {
@@ -77,14 +102,20 @@ export function chatRouter(deps: ServerDeps): Hono {
             embedder,
             chatModel,
             apiKey: process.env[deps.chatApiKeyEnv ?? 'LLM_API_KEY'],
+            visionModel,
+            visionApiKey,
+            vaultDir: deps.vaultDir,
           },
           session.id,
           question,
           {
+            signal: ac.signal,
             onContext: (citations) => safeWrite('citations', { citations }),
             onDelta: (text) => safeWrite('delta', { text }),
             onError: (message) => safeWrite('error', { message }),
+            onTool: (name, detail) => safeWrite('tool', { name, detail }),
           },
+          image,
         )
         await chain
         closed = true

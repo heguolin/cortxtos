@@ -10,6 +10,7 @@ import { buildChatModel } from './llm/chat.js'
 import { Indexer } from './kb/indexer.js'
 import { Scheduler } from './scheduler.js'
 import { runBriefing, runPromptTask } from './briefing.js'
+import { hybridSearch } from './kb/search.js'
 import { createApp, startServer } from './http.js'
 import { dirLayout, resolveDataDir } from './paths.js'
 
@@ -82,13 +83,19 @@ async function boot(): Promise<void> {
       return runBriefing(db, backgroundModel, backgroundKey(), config.briefing.promptTemplate)
     }
     let prompt = ''
+    let withKb = false
     try {
-      prompt = (JSON.parse(job.spec) as { prompt?: string }).prompt ?? ''
+      const spec = JSON.parse(job.spec) as { prompt?: string; withKb?: boolean }
+      prompt = spec.prompt ?? ''
+      withKb = spec.withKb ?? false
     } catch {
       prompt = ''
     }
     if (!prompt.trim()) throw new Error('任务没有提示词（spec.prompt 为空）')
-    return runPromptTask(db, backgroundModel, backgroundKey(), prompt)
+    return runPromptTask(db, backgroundModel, backgroundKey(), prompt, {
+      withKb,
+      retrieve: (query) => hybridSearch(db, embedder, query, { limit: 6 }),
+    })
   })
   scheduler.start()
 
@@ -101,6 +108,8 @@ async function boot(): Promise<void> {
     embedder,
     chatModel: buildChatModel(config.models.primary),
     chatApiKeyEnv: config.models.primary.apiKeyEnv,
+    visionModel: config.models.vision ? buildChatModel(config.models.vision, { supportsImages: true }) : null,
+    visionApiKeyEnv: config.models.vision?.apiKeyEnv ?? 'LLM_API_KEY',
     scheduler,
   })
   startServer(app, config.server.port)

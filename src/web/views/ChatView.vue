@@ -31,10 +31,14 @@ const input = ref('')
 const streaming = ref(false)
 const streamText = ref('')
 const streamCitations = ref<Citation[]>([])
+const streamTool = ref('')
 const error = ref('')
 const viewer = ref<{ documentId: number; title: string; page: number | null } | null>(null)
 const scrollBox = ref<HTMLElement | null>(null)
 const mobileSessions = ref(false)
+// 贴图（vision 档当轮对话，不入库）
+const imageFile = ref<File | null>(null)
+const imagePreview = ref('')
 const currentSessionTitle = () => sessions.value.find((s) => s.id === currentId.value)?.title ?? ''
 
 let aborter: AbortController | null = null
@@ -110,30 +114,64 @@ function stopStream() {
   aborter?.abort()
 }
 
+function pickImage(e: Event) {
+  const input = e.target as HTMLInputElement
+  const f = input.files?.[0]
+  if (!f) return
+  if (!['image/jpeg', 'image/png', 'image/webp'].includes(f.type)) {
+    error.value = '仅支持 jpg / png / webp 图片'
+    return
+  }
+  if (f.size > 10 * 1024 * 1024) {
+    error.value = '图片超过 10MB 上限'
+    return
+  }
+  error.value = ''
+  imageFile.value = f
+  imagePreview.value = URL.createObjectURL(f)
+  input.value = ''
+}
+
+function clearImage() {
+  imageFile.value = null
+  imagePreview.value = ''
+}
+
 async function send() {
   const question = input.value.trim()
-  if (!question || streaming.value) return
+  if ((!question && !imageFile.value) || streaming.value) return
   error.value = ''
   if (!currentId.value) {
     await newSession()
     if (!currentId.value) return
   }
   const sessionId = currentId.value
+  const img = imageFile.value
   input.value = ''
-  messages.value.push({ role: 'user', content: question, citations: [] })
+  clearImage()
+  messages.value.push({ role: 'user', content: img ? `${question || '[图片]'} 🖼` : question, citations: [] })
   streaming.value = true
   streamText.value = ''
   streamCitations.value = []
+  streamTool.value = ''
   await scrollBottom()
 
   aborter = new AbortController()
   try {
-    const res = await fetch(`/api/sessions/${sessionId}/messages`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ content: question }),
-      signal: aborter.signal,
-    })
+    let res: Response
+    if (img) {
+      const fd = new FormData()
+      fd.append('content', question)
+      fd.append('image', img)
+      res = await fetch(`/api/sessions/${sessionId}/messages`, { method: 'POST', body: fd, signal: aborter.signal })
+    } else {
+      res = await fetch(`/api/sessions/${sessionId}/messages`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ content: question }),
+        signal: aborter.signal,
+      })
+    }
     if (!res.ok || !res.body) {
       const data = (await res.json().catch(() => ({}))) as { error?: string }
       throw new Error(data.error ?? `请求失败 (${res.status})`)
@@ -159,7 +197,11 @@ async function send() {
         const payload = JSON.parse(data) as Record<string, unknown>
         if (eventName === 'citations') {
           streamCitations.value = payload.citations as Citation[]
+        } else if (eventName === 'tool') {
+          // 深挖工具调用提示
+          streamTool.value = `${payload.name as string} ${payload.detail as string}`
         } else if (eventName === 'delta') {
+          streamTool.value = ''
           streamText.value += payload.text as string
           void scrollBottom()
         } else if (eventName === 'error') {
@@ -276,9 +318,11 @@ function onCitation(c: Citation) {
         <!-- 流式中的回复 -->
         <div v-if="streaming" class="flex justify-start">
           <div class="max-w-[80%] rounded-2xl border border-neon/40 bg-void px-4 py-3 text-sm leading-7">
+            <p v-if="!streamText" class="text-ink-dim">
+              {{ streamTool ? `🔧 ${streamTool}…` : '检索知识库中…' }}
+            </p>
             <!-- eslint-disable-next-line vue/no-v-html -->
-            <div v-if="streamText" v-html="renderMd(streamText)"></div>
-            <span v-else class="text-ink-dim">检索知识库中…</span>
+            <div v-else v-html="renderMd(streamText)"></div>
             <div v-if="streamCitations.length" class="mt-3 flex flex-wrap gap-2 border-t border-edge/60 pt-2">
               <span
                 v-for="c in streamCitations"
@@ -295,7 +339,23 @@ function onCitation(c: Citation) {
       </div>
 
       <div class="border-t border-edge p-3 md:p-4">
+        <!-- 深挖工具提示 -->
+        <p v-if="streaming && streamTool" class="mb-2 truncate text-xs text-neon-soft">
+          🔧 {{ streamTool }}…
+        </p>
+        <!-- 贴图预览 -->
+        <div v-if="imagePreview" class="mb-2 flex items-center gap-2">
+          <img :src="imagePreview" alt="预览" class="h-14 w-14 rounded-lg border border-edge object-cover" />
+          <button class="text-xs text-ink-dim hover:text-red-400" @click="clearImage">移除</button>
+        </div>
         <div class="flex items-end gap-2 md:gap-3">
+          <label
+            class="shrink-0 cursor-pointer rounded-xl border border-edge px-3 py-2.5 text-sm text-ink-dim transition hover:border-neon hover:text-neon md:py-3"
+            title="贴图提问（vision）"
+          >
+            🖼
+            <input type="file" accept="image/jpeg,image/png,image/webp" class="hidden" @change="pickImage" />
+          </label>
           <textarea
             v-model="input"
             rows="2"

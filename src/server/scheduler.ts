@@ -66,6 +66,8 @@ export interface JobSpec {
   prompt?: string
   /** 展示名（自定义任务用；内置任务用默认名） */
   title?: string
+  /** 执行时携带知识库检索上下文（用 prompt 当检索词） */
+  withKb?: boolean
 }
 
 /** 任务执行器：由上层按 job 分派（内置简报 / 自定义提示词任务） */

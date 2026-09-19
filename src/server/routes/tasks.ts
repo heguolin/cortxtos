@@ -27,12 +27,14 @@ const createTaskSchema = z.strictObject({
   title: z.string().trim().min(1).max(40),
   schedule: z.string().regex(SCHEDULE_RE, '须为 HH:mm（如 22:00）'),
   prompt: z.string().trim().min(1).max(4000),
+  withKb: z.boolean().optional().default(false),
 })
 
 const patchTaskSchema = z.strictObject({
   title: z.string().trim().min(1).max(40).optional(),
   schedule: z.string().regex(SCHEDULE_RE, '须为 HH:mm').optional(),
   prompt: z.string().trim().min(1).max(4000).optional(),
+  withKb: z.boolean().optional(),
   enabled: z.boolean().optional(),
 })
 
@@ -42,6 +44,7 @@ export interface JobView {
   title: string
   schedule: string
   prompt: string | null
+  withKb: boolean
   enabled: boolean
   builtin: boolean
   last_run_at: string | null
@@ -60,6 +63,7 @@ function toView(job: JobRow): JobView {
     title: spec.title ?? (job.name === BRIEFING_JOB ? '每日简报' : job.name),
     schedule: spec.schedule ?? '08:00',
     prompt: spec.prompt ?? null,
+    withKb: spec.withKb ?? false,
     enabled: job.enabled === 1,
     builtin: job.name === BRIEFING_JOB,
     last_run_at: job.last_run_at,
@@ -86,11 +90,11 @@ export function tasksRouter(deps: ServerDeps): Hono {
     if (!body.success) {
       throw new BriefingError(400, body.error.issues.map((i) => i.message).join('；'))
     }
-    const { title, schedule, prompt } = body.data
+    const { title, schedule, prompt, withKb } = body.data
     const name = `custom-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`
     const info = deps.db
       .prepare("INSERT INTO jobs(name, kind, spec) VALUES (?, 'cron', ?)")
-      .run(name, JSON.stringify({ schedule, prompt, title } satisfies JobSpec))
+      .run(name, JSON.stringify({ schedule, prompt, title, withKb } satisfies JobSpec))
     const job = deps.db.prepare('SELECT * FROM jobs WHERE id = ?').get(Number(info.lastInsertRowid)) as JobRow
     return c.json({ job: toView(job) }, 201)
   })
@@ -113,7 +117,12 @@ export function tasksRouter(deps: ServerDeps): Hono {
     })()
     const next = { ...spec, ...body.data }
     deps.db.prepare("UPDATE jobs SET spec = ?, enabled = ?, last_run_at = last_run_at WHERE id = ?").run(
-      JSON.stringify({ schedule: next.schedule, prompt: next.prompt, title: next.title }),
+      JSON.stringify({
+        schedule: next.schedule,
+        prompt: next.prompt,
+        title: next.title,
+        withKb: next.withKb ?? false,
+      } satisfies JobSpec),
       body.data.enabled === undefined ? job.enabled : body.data.enabled ? 1 : 0,
       id,
     )

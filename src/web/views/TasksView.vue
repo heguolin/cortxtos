@@ -36,7 +36,7 @@ const editingTime = ref<number | null>(null)
 const editTimeValue = ref('')
 
 // 新建表单
-const form = ref({ title: '', schedule: '22:00', prompt: '' })
+const form = ref({ title: '', schedule: '22:00', prompt: '', withKb: false })
 
 const statusClass: Record<string, string> = {
   running: 'bg-neon/20 text-neon animate-pulse',
@@ -72,7 +72,7 @@ async function create() {
     const data = (await res.json().catch(() => ({}))) as { error?: string }
     if (!res.ok) throw new Error(data.error ?? `创建失败 (${res.status})`)
     creating.value = false
-    form.value = { title: '', schedule: '22:00', prompt: '' }
+    form.value = { title: '', schedule: '22:00', prompt: '', withKb: false }
     notice.value = '任务已创建'
     await refresh()
   } catch (e) {
@@ -151,6 +151,10 @@ async function remove(job: Job) {
         <label class="mb-1 block text-xs text-ink-dim">提示词（到点交给后台模型执行）</label>
         <textarea v-model="form.prompt" rows="3" placeholder="如：总结今天新增的文档，用三句话告诉我今天学了什么" class="w-full resize-none rounded-lg border border-edge bg-void px-3 py-2 text-sm outline-none focus:border-neon"></textarea>
       </div>
+      <label class="mt-3 flex cursor-pointer items-center gap-2 text-sm text-ink-dim">
+        <input v-model="form.withKb" type="checkbox" class="h-4 w-4 accent-[#f26bff]" />
+        携带知识库检索（用提示词当检索词，命中片段注入上下文）
+      </label>
       <div class="mt-3 flex justify-end gap-3">
         <button class="rounded-lg px-4 py-2 text-sm text-ink-dim hover:text-ink" @click="creating = false">取消</button>
         <button class="rounded-lg bg-neon/20 px-4 py-2 text-sm font-semibold text-neon hover:bg-neon/30 disabled:opacity-50" :disabled="busy || !form.title || !form.prompt" @click="create">

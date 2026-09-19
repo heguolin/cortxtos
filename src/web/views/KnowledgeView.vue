@@ -15,6 +15,9 @@ const dragging = ref(false)
 const uploading = ref(false)
 const notice = ref('')
 const noticeOk = ref(false)
+// 快速捕获
+const captureText = ref('')
+const capturing = ref(false)
 
 // 在线编辑
 const editing = ref<DocumentRow | null>(null)
@@ -39,6 +42,31 @@ async function refresh() {
   if (res.ok) docs.value = ((await res.json()) as { documents: DocumentRow[] }).documents
 }
 onMounted(refresh)
+
+async function capture() {
+  const text = captureText.value.trim()
+  if (!text) return
+  capturing.value = true
+  notice.value = ''
+  try {
+    const res = await fetch('/api/documents/capture', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ text }),
+    })
+    const body = (await res.json().catch(() => ({}))) as { error?: string; duplicate?: boolean }
+    if (!res.ok) throw new Error(body.error ?? `入库失败 (${res.status})`)
+    noticeOk.value = true
+    notice.value = body.duplicate ? '内容已存在（幂等）' : '已入库，正在自动索引'
+    captureText.value = ''
+    await refresh()
+  } catch (e) {
+    noticeOk.value = false
+    notice.value = e instanceof Error ? e.message : String(e)
+  } finally {
+    capturing.value = false
+  }
+}
 
 async function upload(files: FileList | File[]) {
   uploading.value = true
@@ -123,6 +151,24 @@ async function saveEdit() {
 
 <template>
   <div class="mx-auto max-w-4xl space-y-6">
+    <!-- 快速捕获条 -->
+    <div class="flex items-end gap-2.5 rounded-2xl border border-edge bg-panel p-4">
+      <textarea
+        v-model="captureText"
+        rows="1"
+        placeholder="快速捕获：贴一段文字，首行当标题，保存即入库…"
+        class="min-w-0 flex-1 resize-none rounded-xl border border-edge bg-void px-3.5 py-2.5 text-sm outline-none focus:border-neon"
+        @keydown.enter.exact.prevent="capture"
+      ></textarea>
+      <button
+        class="shrink-0 rounded-xl bg-neon/20 px-4 py-2.5 text-sm font-semibold text-neon transition hover:bg-neon/30 disabled:opacity-40"
+        :disabled="capturing || !captureText.trim()"
+        @click="capture"
+      >
+        {{ capturing ? '入库中…' : '保存入库' }}
+      </button>
+    </div>
+
     <div
       class="rounded-2xl border-2 border-dashed p-8 text-center transition"
       :class="dragging ? 'border-neon bg-neon/10' : 'border-edge bg-panel'"

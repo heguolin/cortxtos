@@ -9,7 +9,10 @@ import type { Context, Model } from '@earendil-works/pi-ai'
 
 export type ChatModel = Model<'openai-completions'>
 
-export function buildChatModel(profile: { model: string; baseUrl?: string }): ChatModel {
+export function buildChatModel(
+  profile: { model: string; baseUrl?: string },
+  opts: { supportsImages?: boolean } = {},
+): ChatModel {
   const baseUrl = (profile.baseUrl ?? process.env.LLM_BASE_URL ?? '').replace(/\/+$/, '')
   return {
     id: profile.model,
@@ -18,7 +21,7 @@ export function buildChatModel(profile: { model: string; baseUrl?: string }): Ch
     provider: 'cortxt',
     baseUrl,
     reasoning: false,
-    input: ['text'],
+    input: opts.supportsImages ? ['text', 'image'] : ['text'],
     cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
     contextWindow: 128_000,
     maxTokens: 8_192,

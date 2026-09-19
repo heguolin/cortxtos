@@ -92,6 +92,30 @@ export function kbRouter(deps: ServerDeps): Hono {
     return c.json({ hits })
   })
 
+  // 快速捕获：纯文本/Markdown 直接入库（DESIGN v2.2），首行作标题
+  r.post('/api/documents/capture', async (c) => {
+    const body = await c.req
+      .json<{ text?: string }>()
+      .catch(() => ({}) as { text?: string })
+    const text = body.text?.trim()
+    if (!text) throw new KbError(400, '内容不能为空')
+    if (text.length > 50_000) throw new KbError(413, '内容超过 50000 字上限')
+    if (!deps.indexer) throw new KbError(503, '索引器未就绪（测试环境）')
+
+    const firstLine = text.split(/\r?\n/).find((l) => l.trim().length > 0)?.trim() ?? ''
+    const title = firstLine.replace(/^#+\s*/, '').replace(/[\\/:*?"<>|]/g, ' ').slice(0, 40) ||
+      `捕获 ${new Date().toLocaleString('zh-CN', { hour12: false })}`
+    const result = uploadDocument(deps.db, deps.vaultDir, {
+      name: `${title}.md`,
+      bytes: new TextEncoder().encode(text),
+    })
+    if (!result.duplicate) deps.indexer.enqueue(result.document.id)
+    return c.json(
+      { document: result.document, duplicate: result.duplicate },
+      result.duplicate ? (200 as const) : (201 as const),
+    )
+  })
+
   r.delete('/api/documents/:id', (c) => {
     deleteDocument(deps.db, deps.vaultDir, Number(c.req.param('id')))
     return c.body(null, 204)

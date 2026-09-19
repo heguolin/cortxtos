@@ -27,6 +27,10 @@ interface DashData {
 
 const data = ref<DashData | null>(null)
 const question = ref('')
+const captureText = ref('')
+const capturing = ref(false)
+const captureMsg = ref('')
+const captureOk = ref(false)
 const emit = defineEmits<{ navigate: [page: string] }>()
 
 const hour = new Date().getHours()
@@ -60,6 +64,31 @@ function ask(q: string) {
   if (!text) return
   bus.ask = text
   emit('navigate', 'chat')
+}
+
+async function capture() {
+  const text = captureText.value.trim()
+  if (!text) return
+  capturing.value = true
+  captureMsg.value = ''
+  try {
+    const res = await fetch('/api/documents/capture', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ text }),
+    })
+    const body = (await res.json().catch(() => ({}))) as { error?: string; duplicate?: boolean }
+    if (!res.ok) throw new Error(body.error ?? `入库失败 (${res.status})`)
+    captureOk.value = true
+    captureMsg.value = body.duplicate ? '内容已存在（幂等），未重复入库' : '已入库，正在自动索引 ✦'
+    captureText.value = ''
+    void refresh()
+  } catch (e) {
+    captureOk.value = false
+    captureMsg.value = e instanceof Error ? e.message : String(e)
+  } finally {
+    capturing.value = false
+  }
 }
 </script>
 
@@ -119,6 +148,28 @@ function ask(q: string) {
           >
             阅读全文
           </button>
+        </div>
+
+        <!-- 快速捕获 -->
+        <div class="rounded-2xl border border-edge bg-panel p-5">
+          <h3 class="text-sm font-bold">✍️ 快速捕获</h3>
+          <textarea
+            v-model="captureText"
+            rows="2"
+            placeholder="随手记一段，首行自动当标题，保存即入知识库…"
+            class="mt-3 w-full resize-none rounded-xl border border-edge bg-void px-4 py-2.5 text-sm outline-none focus:border-neon"
+          ></textarea>
+          <div class="mt-2 flex items-center justify-between">
+            <p v-if="captureMsg" :class="captureOk ? 'text-neon-soft' : 'text-red-400'" class="text-xs">{{ captureMsg }}</p>
+            <span v-else class="text-[11px] text-ink-dim">支持 Markdown，上限 5 万字</span>
+            <button
+              class="rounded-lg bg-neon/20 px-3.5 py-1.5 text-xs font-semibold text-neon transition hover:bg-neon/30 disabled:opacity-40"
+              :disabled="capturing || !captureText.trim()"
+              @click="capture"
+            >
+              {{ capturing ? '入库中…' : '保存入库' }}
+            </button>
+          </div>
         </div>
 
         <!-- 快捷提问 -->

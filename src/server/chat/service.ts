@@ -1,13 +1,19 @@
+import { Type } from '@earendil-works/pi-ai'
+import { runAgentLoop, type AgentTool, type StreamFn } from '@earendil-works/pi-agent-core'
+import type { AssistantMessage, Context, Message, UserMessage } from '@earendil-works/pi-ai'
 import { requireApiKey, streamChat, type ChatModel } from '../llm/chat.js'
 import { recordUsage } from '../llm/usage.js'
 import { hybridSearch, type Hit } from '../kb/search.js'
+import { readDocumentFile, getDocument } from '../kb/service.js'
+import { extractPages } from '../kb/extract.js'
 import type { EmbeddingClient } from '../llm/embedder.js'
-import type { AssistantMessage, Context, Message, UserMessage } from '@earendil-works/pi-ai'
 import type { DB } from '../db.js'
 
-/** DESIGN §4.2：M0 固定管线，聊天固定 primary，不自动降级；上下文 = 最近 12 轮 + 检索结果 */
+/** DESIGN v2.2：M1 起固定管线打底 + 工具深挖（混合式）；图片走 vision 档当轮对话不入库 */
 const HISTORY_TURNS = 12
 const SEARCH_LIMIT = 6
+const TOOL_BUDGET = 8
+const KB_READ_MAX_CHARS = 6000
 
 export interface SessionRow {
   id: number
@@ -35,6 +41,8 @@ export interface Citation {
   headingPath: string | null
 }
 
+export type ChatStatus = 400 | 404 | 503
+
 export class ChatError extends Error {
   constructor(
     public readonly status: ChatStatus,
@@ -43,8 +51,6 @@ export class ChatError extends Error {
     super(message)
   }
 }
-
-export type ChatStatus = 400 | 404 | 503
 
 export function createSession(db: DB, title?: string): SessionRow {
   return db
@@ -128,8 +134,22 @@ const SYSTEM_PROMPT = `你是 CortxtOS，运行在用户自托管服务器上的
 3. 片段不足以回答时如实说明，不要编造。
 4. 用简体中文回答，风格简洁直接。`
 
+const SYSTEM_PROMPT_AGENT = `${SYSTEM_PROMPT}
+5. 你还有知识库工具可用：固定检索不够时，可用 kb_search 换关键词补检索、kb_read 通读某篇文档（可指定页）、kb_list 浏览文档清单；工具结果里的事实按「（文档名）」形式标注来源。不需要工具就直接回答。`
+
 function citationOf(hit: Hit, n: number): Citation {
   return { n, documentId: hit.documentId, title: hit.title, page: hit.page, headingPath: hit.headingPath }
+}
+
+function contextBlockOf(hits: Hit[]): string {
+  return hits.length > 0
+    ? `检索到的知识库片段：\n${hits
+        .map((h, i) => {
+          const where = [h.page != null ? `第${h.page}页` : null, h.headingPath].filter(Boolean).join(' · ')
+          return `[${i + 1}] （${h.title}${where ? ` · ${where}` : ''}）\n${h.text}`
+        })
+        .join('\n\n')}`
+    : '（本次检索没有命中知识库内容。如仍需给出事实，请说明它不来自知识库。）'
 }
 
 function syntheticAssistant(text: string): AssistantMessage {
@@ -145,31 +165,103 @@ function syntheticAssistant(text: string): AssistantMessage {
   }
 }
 
-function buildContext(
-  history: Array<{ role: 'user' | 'assistant'; content: string }>,
-  hits: Hit[],
-  question: string,
-): { context: Context; citations: Citation[] } {
-  const citations = hits.map((h, i) => citationOf(h, i + 1))
-  const contextBlock =
-    hits.length > 0
-      ? `检索到的知识库片段：\n${hits
-          .map((h, i) => {
-            const where = [h.page != null ? `第${h.page}页` : null, h.headingPath].filter(Boolean).join(' · ')
-            return `[${i + 1}] （${h.title}${where ? ` · ${where}` : ''}）\n${h.text}`
-          })
-          .join('\n\n')}`
-      : '（本次检索没有命中知识库内容。如仍需给出事实，请说明它不来自知识库。）'
+/** 深挖工具集（DESIGN v2.2 三个，克制）：补检索 / 读文档 / 列清单。工具调用有总预算护栏。 */
+function buildKbTools(
+  deps: { db: DB; embedder: EmbeddingClient; vaultDir: string },
+  cb: { onTool: (name: string, detail: string) => void },
+): AgentTool[] {
+  let budget = 0
+  const overBudget = (): boolean => {
+    budget += 1
+    return budget > TOOL_BUDGET
+  }
+  const budgetResult = () => ({
+    content: [{ type: 'text' as const, text: '已达到工具调用上限，请直接基于现有信息回答。' }],
+    details: {},
+    terminate: true,
+  })
 
-  const messages: Message[] = [
-    ...history.slice(-HISTORY_TURNS).map((m) =>
-      m.role === 'user'
-        ? ({ role: 'user', content: m.content, timestamp: Date.now() } satisfies UserMessage)
-        : syntheticAssistant(m.content),
-    ),
-    { role: 'user', content: `${contextBlock}\n\n---\n\n用户问题：${question}`, timestamp: Date.now() },
-  ]
-  return { context: { systemPrompt: SYSTEM_PROMPT, messages }, citations }
+  const kbSearchParams = Type.Object({ query: Type.String({ description: '检索关键词' }) })
+  const kbSearch: AgentTool<typeof kbSearchParams> = {
+    name: 'kb_search',
+    label: '补充检索',
+    description: '用新的关键词再检索一次知识库，返回相关片段',
+    parameters: kbSearchParams,
+    execute: async (_id, params) => {
+      cb.onTool('kb_search', params.query)
+      if (overBudget()) return budgetResult()
+      const hits = await hybridSearch(deps.db, deps.embedder, params.query, { limit: SEARCH_LIMIT })
+      const text =
+        hits.length > 0
+          ? hits
+              .map((h, i) => {
+                const where = [h.page != null ? `第${h.page}页` : null, h.headingPath].filter(Boolean).join(' · ')
+                return `[${i + 1}] （${h.title}${where ? ` · ${where}` : ''}）\n${h.text}`
+              })
+              .join('\n\n')
+          : '没有命中任何内容。'
+      return { content: [{ type: 'text', text }], details: { hits: hits.length } }
+    },
+  }
+
+  const kbReadParams = Type.Object({
+    documentId: Type.Number({ description: '文档 ID（来自检索结果或 kb_list）' }),
+    page: Type.Optional(Type.Number({ description: '可选，只读该页（PDF）' })),
+  })
+  const kbRead: AgentTool<typeof kbReadParams> = {
+    name: 'kb_read',
+    label: '读文档',
+    description: '读取知识库中指定文档的内容（可指定页码），用于深入理解全文',
+    parameters: kbReadParams,
+    execute: async (_id, params) => {
+      const doc = getDocument(deps.db, params.documentId)
+      const label = doc ? `${doc.title}${params.page != null ? ` 第${params.page}页` : ''}` : `#${params.documentId}`
+      cb.onTool('kb_read', label)
+      if (overBudget()) return budgetResult()
+      if (!doc) return { content: [{ type: 'text', text: `文档 #${params.documentId} 不存在。` }], details: {} }
+      const { bytes } = readDocumentFile(deps.db, deps.vaultDir, doc.id)
+      let pages = await extractPages(doc.mime, bytes)
+      if (params.page != null) {
+        pages = pages.filter((p) => p.page === params.page)
+        if (pages.length === 0) {
+          return { content: [{ type: 'text', text: `${doc.title} 中没有第 ${params.page} 页。` }], details: {} }
+        }
+      }
+      const text = pages
+        .map((p) => (p.page != null ? `【第 ${p.page} 页】\n${p.text}` : p.text))
+        .join('\n\n')
+        .slice(0, KB_READ_MAX_CHARS)
+      return {
+        content: [{ type: 'text', text: `（${doc.title}）\n${text}${text.length >= KB_READ_MAX_CHARS ? '\n…(内容过长已截断)' : ''}` }],
+        details: { documentId: doc.id },
+      }
+    },
+  }
+
+  const kbListParams = Type.Object({})
+  const kbList: AgentTool<typeof kbListParams> = {
+    name: 'kb_list',
+    label: '文档清单',
+    description: '列出知识库中的全部文档（标题与状态）',
+    parameters: kbListParams,
+    execute: async () => {
+      cb.onTool('kb_list', '浏览文档列表')
+      if (overBudget()) return budgetResult()
+      const rows = deps.db.prepare('SELECT id, title FROM documents ORDER BY id DESC LIMIT 100').all() as Array<{
+        id: number
+        title: string
+      }>
+      const text = rows.length > 0 ? rows.map((r) => `#${r.id} ${r.title}`).join('\n') : '知识库为空。'
+      return { content: [{ type: 'text', text }], details: { count: rows.length } }
+    },
+  }
+
+  return [kbSearch, kbRead, kbList]
+}
+
+export interface AskImage {
+  data: Buffer
+  mimeType: string
 }
 
 export interface AskDeps {
@@ -177,26 +269,44 @@ export interface AskDeps {
   embedder: EmbeddingClient
   chatModel: ChatModel
   apiKey?: string
+  /** vision 档（图片问答用）；未配置则图片请求报 503 */
+  visionModel?: ChatModel | null
+  visionApiKey?: string
+  vaultDir: string
 }
 
 export interface AskCallbacks {
   onContext?: (citations: Citation[]) => void
   onDelta?: (text: string) => void
   onError?: (message: string) => void
+  onTool?: (name: string, detail: string) => void
+  signal?: AbortSignal
 }
 
-/** 固定管线：检索 → 注入 → 流式回答 → 落库 + 记账。返回最终 assistant 消息（可能带 errorMessage）。 */
+/** 混合式对话：固定检索注入 → 文本走 agent loop（可深挖）/ 图片走 vision 单轮。落库 + 记账。 */
 export async function ask(
   deps: AskDeps,
   sessionId: number,
   question: string,
   cb: AskCallbacks = {},
+  image?: AskImage,
 ): Promise<{ userMessage: StoredMessage; assistantMessage: StoredMessage | null }> {
-  const userMessage = insertMessage(deps.db, sessionId, 'user', question, [], null, null)
+  const isVision = !!image
+  const model = isVision ? deps.visionModel : deps.chatModel
+  if (isVision && !model) {
+    throw new ChatError(503, 'vision 档未配置：请在服务器 data/config.json 的 models.vision 配置后重启')
+  }
 
-  const historyRows = getMessages(deps.db, sessionId)
-    .slice(0, -1)
-    .map((m) => ({ role: m.role, content: m.content }))
+  const userMessage = insertMessage(deps.db, sessionId, 'user', question, [], model?.id ?? null, null)
+
+  const historyRows = getMessages(deps.db, sessionId).slice(0, -1)
+  const historyMsgs: Message[] = historyRows
+    .slice(-HISTORY_TURNS)
+    .map((m) =>
+      m.role === 'user'
+        ? ({ role: 'user', content: m.content, timestamp: Date.now() } satisfies UserMessage)
+        : syntheticAssistant(m.content),
+    )
 
   let hits: Hit[] = []
   try {
@@ -207,24 +317,79 @@ export async function ask(
     const assistantMessage = insertMessage(deps.db, sessionId, 'assistant', `检索失败：${message}`, [], null, null)
     return { userMessage, assistantMessage }
   }
-  const { context, citations } = buildContext(historyRows, hits, question)
+  const citations = hits.map((h, i) => citationOf(h, i + 1))
+  const contextBlock = contextBlockOf(hits)
   cb.onContext?.(citations)
 
   let partial = ''
   let usage: { promptTokens: number; completionTokens: number } | null = null
   let lastError: string | undefined
+
   try {
-    const result = await streamChat(deps.chatModel, context, {
-      apiKey: requireApiKey(deps.apiKey),
-      onDelta: (t) => {
-        partial += t
-        cb.onDelta?.(t)
-      },
-    })
-    partial = result.text
-    usage = result.usage
-    // 用户主动停止不算失败；其余错误显式上报（DESIGN §4.2：不静默降级）
-    if (result.errorMessage && !result.aborted) lastError = result.errorMessage
+    // key 缺失等配置错误也走统一失败路径（显式报错 + 落库，不静默）
+    const apiKey = isVision ? requireApiKey(deps.visionApiKey) : requireApiKey(deps.apiKey)
+    if (isVision) {
+      // 图片问答：vision 档单轮（不挂工具，降低不稳定面）
+      const lastUser: UserMessage = {
+        role: 'user',
+        content: [
+          { type: 'text', text: `${contextBlock}\n\n---\n\n用户问题：${question}` },
+          { type: 'image', data: image!.data.toString('base64'), mimeType: image!.mimeType },
+        ],
+        timestamp: Date.now(),
+      }
+      const result = await streamChat(
+        model!,
+        { systemPrompt: SYSTEM_PROMPT, messages: [...historyMsgs, lastUser] },
+        { apiKey, signal: cb.signal, onDelta: (t) => { partial += t; cb.onDelta?.(t) } },
+      )
+      partial = result.text
+      usage = result.usage
+      if (result.errorMessage && !result.aborted) lastError = result.errorMessage
+    } else {
+      // 混合式 agent loop：固定检索打底，模型可按需深挖
+      const lastUser: UserMessage = {
+        role: 'user',
+        content: `${contextBlock}\n\n---\n\n用户问题：${question}`,
+        timestamp: Date.now(),
+      }
+      const tools = buildKbTools(deps, { onTool: (name, detail) => cb.onTool?.(name, detail) })
+      const streamFn: StreamFn = (m, ctx, opts) =>
+        import('@earendil-works/pi-ai/api/openai-completions').then((api) =>
+          api.stream(m as ChatModel, ctx, { ...opts, apiKey }),
+        )
+      const finalMsgs = await runAgentLoop(
+        [lastUser],
+        { systemPrompt: SYSTEM_PROMPT_AGENT, messages: [...historyMsgs, lastUser], tools },
+        { model: deps.chatModel, convertToLlm: (msgs) => msgs.filter((m): m is Message => m.role === 'user' || m.role === 'assistant' || m.role === 'toolResult') },
+        (event) => {
+          if (event.type === 'message_update') {
+            const e = event.assistantMessageEvent
+            if (e.type === 'text_delta') {
+              partial += e.delta
+              cb.onDelta?.(e.delta)
+            }
+          } else if (event.type === 'tool_execution_start') {
+            cb.onTool?.(event.toolName, JSON.stringify(event.args).slice(0, 120))
+          }
+        },
+        cb.signal,
+        streamFn,
+      )
+      const lastAssistant = [...finalMsgs].reverse().find((m) => m.role === 'assistant') as
+        | AssistantMessage
+        | undefined
+      if (lastAssistant) {
+        partial = lastAssistant.content
+          .filter((c) => c.type === 'text')
+          .map((c) => c.text)
+          .join('')
+        usage = {
+          promptTokens: lastAssistant.usage?.input ?? 0,
+          completionTokens: lastAssistant.usage?.output ?? 0,
+        }
+      }
+    }
   } catch (err) {
     lastError = err instanceof Error ? err.message : String(err)
   }
@@ -238,7 +403,7 @@ export async function ask(
       'assistant',
       content,
       citations,
-      deps.chatModel.id,
+      model?.id ?? null,
       null,
     )
     return { userMessage, assistantMessage }
@@ -246,8 +411,8 @@ export async function ask(
 
   if (usage) {
     recordUsage(deps.db, {
-      model: deps.chatModel.id,
-      purpose: 'chat',
+      model: model!.id,
+      purpose: isVision ? 'vision' : 'chat',
       promptTokens: usage.promptTokens,
       completionTokens: usage.completionTokens,
     })
@@ -258,8 +423,10 @@ export async function ask(
     'assistant',
     partial.trim() || '（空回复）',
     citations,
-    deps.chatModel.id,
+    model?.id ?? null,
     usage,
   )
   return { userMessage, assistantMessage }
 }
+
+export { Context }

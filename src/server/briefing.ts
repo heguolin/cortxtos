@@ -46,18 +46,43 @@ export async function runBriefing(
   return result.text.trim() || '（空简报）'
 }
 
-/** 自定义定时任务：跑用户填写的提示词（background 档），产物落任务记录 */
+/**
+ * 自定义定时任务：跑用户填写的提示词（background 档），产物落任务记录。
+ * withKb = 执行前用提示词当检索词查知识库，把命中片段注入上下文（DESIGN v2.2）。
+ */
 export async function runPromptTask(
   db: DB,
   model: ChatModel,
   apiKey: string | undefined,
   prompt: string,
+  opts: {
+    withKb?: boolean
+    retrieve?: (query: string) => Promise<Array<{ title: string; page: number | null; headingPath: string | null; text: string }>>
+  } = {},
 ): Promise<string> {
+  let finalPrompt = prompt
+  if (opts.withKb && opts.retrieve) {
+    try {
+      const hits = await opts.retrieve(prompt)
+      if (hits.length > 0) {
+        const block = hits
+          .map((h, i) => {
+            const where = [h.page != null ? `第${h.page}页` : null, h.headingPath].filter(Boolean).join(' · ')
+            return `[${i + 1}] （${h.title}${where ? ` · ${where}` : ''}）\n${h.text}`
+          })
+          .join('\n\n')
+        finalPrompt = `检索到的知识库片段：\n${block}\n\n---\n\n任务：${prompt}`
+      }
+    } catch (err) {
+      // 检索失败不阻断任务，带错误说明跑纯提示词
+      console.error('[prompt-task] 检索失败，降级为纯提示词:', err)
+    }
+  }
   const result = await streamChat(
     model,
     {
       systemPrompt: '你是用户自托管工作台里的定时任务执行器。直接完成任务，用简体中文输出。',
-      messages: [{ role: 'user', content: prompt, timestamp: Date.now() }],
+      messages: [{ role: 'user', content: finalPrompt, timestamp: Date.now() }],
     },
     { apiKey },
   )
