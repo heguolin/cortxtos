@@ -1,9 +1,8 @@
 <script setup lang="ts">
 import { nextTick, onMounted, ref, watch } from 'vue'
-import DOMPurify from 'dompurify'
-import { marked } from 'marked'
 import ViewerModal from './ViewerModal.vue'
 import { bus } from '../store'
+import { renderMarkdown } from '../markdown'
 
 interface Session {
   id: number
@@ -44,10 +43,6 @@ const currentSessionTitle = () => sessions.value.find((s) => s.id === currentId.
 let aborter: AbortController | null = null
 
 const sessionList = ref<HTMLElement | null>(null)
-
-function renderMd(text: string): string {
-  return DOMPurify.sanitize(marked.parse(text, { async: false }))
-}
 
 function fmtSize(n: number): string {
   return n >= 1024 ? `${(n / 1024).toFixed(1)}KB` : `${n}B`
@@ -368,7 +363,7 @@ function onCitation(c: Citation) {
             :class="m.role === 'user' ? 'bg-neon/15 text-ink' : 'border border-edge bg-void text-ink'"
           >
             <!-- eslint-disable-next-line vue/no-v-html -->
-            <div v-html="renderMd(m.content)"></div>
+            <div v-html="renderMarkdown(m.content)"></div>
             <div v-if="m.citations.length" class="mt-3 flex flex-wrap gap-2 border-t border-edge/60 pt-2">
               <button
                 v-for="c in m.citations"
@@ -396,7 +391,7 @@ function onCitation(c: Citation) {
               {{ streamTool ? `🔧 ${streamTool}…` : '检索知识库中…' }}
             </p>
             <!-- eslint-disable-next-line vue/no-v-html -->
-            <div v-else v-html="renderMd(streamText)"></div>
+            <div v-else v-html="renderMarkdown(streamText)"></div>
             <div v-if="streamCitations.length" class="mt-3 flex flex-wrap gap-2 border-t border-edge/60 pt-2">
               <span
                 v-for="c in streamCitations"

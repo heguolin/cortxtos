@@ -1,8 +1,7 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
-import DOMPurify from 'dompurify'
-import { marked } from 'marked'
 import { fmtDbTime } from '../format'
+import { renderMarkdown } from '../markdown'
 
 interface Job {
   id: number
@@ -44,9 +43,6 @@ const statusClass: Record<string, string> = {
   failed: 'bg-red-500/15 text-red-300',
 }
 
-function renderMd(text: string): string {
-  return DOMPurify.sanitize(marked.parse(text, { async: false }))
-}
 function dur(r: Run): string {
   if (!r.finished_at) return '…'
   const s = (new Date(r.finished_at.replace(' ', 'T') + 'Z').getTime() - new Date(r.started_at.replace(' ', 'T') + 'Z').getTime()) / 1000
@@ -248,7 +244,7 @@ async function remove(job: Job) {
         <div class="flex-1 overflow-auto px-7 py-6">
           <p v-if="detail.status === 'failed'" class="text-sm text-red-400">{{ detail.error }}</p>
           <!-- eslint-disable-next-line vue/no-v-html -->
-          <div v-else class="max-w-none text-sm leading-7 [&_h2]:mb-2 [&_h2]:mt-4 [&_h2]:text-base [&_h2]:font-bold [&_li]:ml-4 [&_li]:list-disc [&_p]:mb-3" v-html="renderMd(detail.output ?? '')"></div>
+          <div v-else class="max-w-none text-sm leading-7 [&_h2]:mb-2 [&_h2]:mt-4 [&_h2]:text-base [&_h2]:font-bold [&_li]:ml-4 [&_li]:list-disc [&_p]:mb-3" v-html="renderMarkdown(detail.output ?? '')"></div>
         </div>
       </div>
     </div>

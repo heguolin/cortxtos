@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
-import DOMPurify from 'dompurify'
-import { marked } from 'marked'
+import { renderMarkdown } from '../markdown'
 
 const props = defineProps<{
   documentId: number
@@ -25,7 +24,7 @@ onMounted(async () => {
     const res = await fetch(rawUrl.value)
     if (!res.ok) throw new Error(`加载失败 (${res.status})`)
     const md = await res.text()
-    html.value = DOMPurify.sanitize(marked.parse(md, { async: false }))
+    html.value = renderMarkdown(md)
   } catch (e) {
     loadError.value = e instanceof Error ? e.message : String(e)
   } finally {

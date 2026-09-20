@@ -1,8 +1,7 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
-import DOMPurify from 'dompurify'
-import { marked } from 'marked'
 import { fmtDbTime } from '../format'
+import { renderMarkdown } from '../markdown'
 
 interface BriefingItem {
   id: number
@@ -25,10 +24,6 @@ const statusClass: Record<string, string> = {
   running: 'bg-neon/20 text-neon animate-pulse',
   success: 'bg-emerald-500/15 text-emerald-300',
   failed: 'bg-red-500/15 text-red-300',
-}
-
-function renderMd(text: string): string {
-  return DOMPurify.sanitize(marked.parse(text, { async: false }))
 }
 
 async function refresh() {
@@ -110,7 +105,7 @@ async function generate() {
         <div class="flex-1 overflow-auto px-8 py-6">
           <p v-if="detail.status === 'failed'" class="text-sm text-red-400">{{ detail.error }}</p>
           <!-- eslint-disable-next-line vue/no-v-html -->
-          <div v-else class="max-w-none text-sm leading-7 [&_h1]:mb-3 [&_h1]:text-lg [&_h1]:font-bold [&_h2]:mb-2 [&_h2]:mt-4 [&_h2]:text-base [&_h2]:font-bold [&_li]:ml-4 [&_li]:list-disc [&_p]:mb-3" v-html="renderMd(detail.output ?? '')"></div>
+          <div v-else class="max-w-none text-sm leading-7 [&_h1]:mb-3 [&_h1]:text-lg [&_h1]:font-bold [&_h2]:mb-2 [&_h2]:mt-4 [&_h2]:text-base [&_h2]:font-bold [&_li]:ml-4 [&_li]:list-disc [&_p]:mb-3" v-html="renderMarkdown(detail.output ?? '')"></div>
         </div>
       </div>
     </div>
