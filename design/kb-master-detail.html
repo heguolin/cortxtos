@@ -1,0 +1,313 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>CortxtOS 设计稿 · 知识库主-详阅读布局</title>
+<style>
+:root {
+  --void: #0b0713; --panel: #141021; --panel2: #1b1530; --edge: #2c2050;
+  --neon: #f26bff; --neon-soft: #9d7bff; --ink: #efe9ff; --dim: #8f86ad;
+  --ok: #34d399; --bad: #fb7185;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; }
+body {
+  background: var(--void); color: var(--ink);
+  font-family: 'PingFang SC', 'Microsoft YaHei', system-ui, sans-serif; font-size: 14px;
+}
+body::before {
+  content: ''; position: fixed; inset: 0; pointer-events: none; z-index: 0;
+  background:
+    radial-gradient(1100px 560px at 88% -12%, rgba(242,107,255,.09), transparent 62%),
+    radial-gradient(900px 500px at -8% 108%, rgba(157,123,255,.08), transparent 60%);
+}
+
+.mockbar {
+  position: sticky; top: 0; z-index: 99; display: flex; align-items: center; gap: 10px;
+  padding: 8px 16px; background: #05030a; border-bottom: 1px solid var(--edge); flex-wrap: wrap;
+}
+.mockbar .tag { font-size: 12px; color: var(--dim); }
+.mockbar .tag b { color: var(--neon); }
+.mockbar .w { margin-left: auto; display: flex; gap: 6px; }
+.mockbar .w button {
+  border: 1px solid var(--edge); background: transparent; color: var(--dim);
+  border-radius: 999px; padding: 4px 12px; font-size: 12px; cursor: pointer;
+}
+.mockbar .w button.on { border-color: var(--neon); color: var(--neon); }
+
+.app { position: relative; z-index: 1; display: flex; height: calc(100vh - 45px); }
+.sidebar {
+  width: 220px; flex-shrink: 0; display: flex; flex-direction: column;
+  background: rgba(20,16,33,.82); border-right: 1px solid var(--edge);
+}
+.brand { padding: 20px 18px 12px; }
+.brand h1 { font-size: 17px; letter-spacing: .5px; }
+.brand h1 span { color: var(--neon); text-shadow: 0 0 14px rgba(242,107,255,.5); }
+.nav { padding: 4px 12px; display: flex; flex-direction: column; gap: 3px; }
+.nav button {
+  text-align: left; padding: 8px 12px; border-radius: 10px; border: none;
+  background: transparent; color: var(--dim); font-size: 13px; cursor: pointer;
+}
+.nav button.on { color: var(--neon); background: rgba(242,107,255,.12); }
+
+.kb { flex: 1; display: flex; min-width: 0; padding: 18px 22px; gap: 18px; }
+
+/* ===== 左：文档窄列 ===== */
+.doclist {
+  width: 300px; flex-shrink: 0; display: flex; flex-direction: column;
+  background: rgba(20,16,33,.85); border: 1px solid var(--edge); border-radius: 16px; overflow: hidden;
+}
+.doclist .tools { padding: 12px 12px 8px; display: flex; flex-direction: column; gap: 8px; }
+.doclist .search {
+  background: var(--void); border: 1px solid var(--edge); border-radius: 10px;
+  padding: 8px 12px; color: var(--ink); font-size: 12.5px; outline: none;
+}
+.doclist .search:focus { border-color: var(--neon); }
+.tagbar { display: flex; gap: 6px; flex-wrap: wrap; }
+.tagbar button {
+  border: none; cursor: pointer; border-radius: 999px; padding: 3px 10px; font-size: 11px;
+  background: rgba(255,255,255,.06); color: var(--dim);
+}
+.tagbar button.on { background: rgba(242,107,255,.15); color: var(--neon); }
+.items { flex: 1; overflow: auto; padding: 4px 8px 10px; }
+.item {
+  width: 100%; text-align: left; border: 1px solid transparent; background: transparent;
+  border-radius: 12px; padding: 10px 12px; cursor: pointer; color: var(--ink); margin-bottom: 2px;
+}
+.item:hover { background: rgba(242,107,255,.06); }
+.item.on { background: rgba(242,107,255,.12); border-color: rgba(242,107,255,.35); }
+.item .t { font-size: 13px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.item .meta { display: flex; align-items: center; gap: 6px; margin-top: 5px; }
+.dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+.dot.ready { background: var(--ok); box-shadow: 0 0 6px rgba(52,211,153,.7); }
+.dot.failed { background: var(--bad); }
+.dot.queued { background: var(--dim); }
+.item .tg { font-size: 10px; color: var(--neon-soft); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.item .sz { margin-left: auto; font-size: 10px; color: var(--dim); }
+
+/* ===== 右：详情面板 ===== */
+.detail {
+  flex: 1; min-width: 0; display: flex; flex-direction: column;
+  background: rgba(20,16,33,.85); border: 1px solid var(--edge); border-radius: 16px; overflow: hidden;
+}
+.dhead { padding: 14px 20px 12px; border-bottom: 1px solid var(--edge); }
+.dhead h2 { font-size: 16px; }
+.dhead .sub { display: flex; align-items: center; gap: 10px; margin-top: 6px; font-size: 11.5px; color: var(--dim); flex-wrap: wrap; }
+.dhead .ops { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+.btn {
+  border: none; cursor: pointer; border-radius: 9px; padding: 6px 13px; font-size: 12px; font-weight: 600;
+  background: rgba(242,107,255,.16); color: var(--neon);
+}
+.btn:hover { background: rgba(242,107,255,.26); }
+.btn.ghost { background: transparent; border: 1px solid var(--edge); color: var(--dim); font-weight: 400; }
+.btn.danger { background: transparent; border: 1px solid rgba(251,113,133,.4); color: var(--bad); font-weight: 400; }
+.dbody { flex: 1; overflow: auto; padding: 22px 28px; line-height: 1.9; font-size: 13.5px; }
+.dbody h1 { font-size: 20px; margin-bottom: 14px; }
+.dbody h2 { font-size: 16px; margin: 20px 0 10px; color: var(--neon-soft); }
+.dbody p { margin-bottom: 12px; color: var(--ink); }
+.dbody p.dim { color: var(--dim); }
+.dbody pre {
+  background: var(--void); border: 1px solid var(--edge); border-radius: 10px;
+  padding: 12px 14px; overflow: auto; margin: 12px 0; font-size: 12px; color: #d8ccff;
+  font-family: ui-monospace, Consolas, monospace;
+}
+.dbody blockquote {
+  border-left: 3px solid var(--neon); background: rgba(242,107,255,.06);
+  padding: 10px 14px; border-radius: 0 10px 10px 0; margin-bottom: 12px; color: var(--dim);
+}
+.dbody ul { margin: 0 0 12px 18px; }
+.dbody li { margin-bottom: 4px; }
+.pdfpane { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; color: var(--dim); }
+.pdfpane .frame {
+  width: 72%; height: 62%; border: 1px solid var(--edge); border-radius: 12px; background: #171126;
+  display: grid; place-items: center; font-size: 40px;
+}
+.pdfpane .pages { display: flex; gap: 8px; align-items: center; font-size: 12px; }
+.pdfpane .pages b { color: var(--ink); }
+
+/* ===== 移动端 ===== */
+.m-only { display: none; }
+@media (max-width: 760px) {
+  .sidebar { display: none; }
+  .kb { padding: 0; gap: 0; }
+  .doclist, .detail { border-radius: 0; border: none; }
+  .m-detail-on .doclist { display: none; }
+  .m-detail-on .detail { display: flex; }
+  .m-detail:not(.m-detail-on) .detail { display: none; }
+  .m-detail:not(.m-detail-on) .doclist { display: flex; width: 100%; }
+  .back {
+    display: inline-flex !important; align-items: center; gap: 4px;
+    background: none; border: none; color: var(--neon); font-size: 12px; cursor: pointer; padding: 0;
+  }
+}
+.back { display: none; }
+</style>
+</head>
+<body>
+
+<div class="mockbar">
+  <span class="tag">设计稿 · 知识库<b>主-详阅读布局</b>（点左侧文档切换 / 含移动端形态）</span>
+  <span class="w">
+    <button class="on" id="wDesk">桌面 1360</button>
+    <button id="wMob">手机 390</button>
+  </span>
+</div>
+
+<div class="app" id="app">
+  <aside class="sidebar">
+    <div class="brand"><h1>Cortxt<span>OS</span></h1></div>
+    <nav class="nav">
+      <button>✦ 今天</button><button>◇ 对话</button>
+      <button class="on">◈ 知识库</button><button>▤ 简报</button>
+      <button>⚙ 任务</button><button>⚡ 用量</button><button>⚑ 设置</button>
+    </nav>
+  </aside>
+
+  <div class="kb" id="kb">
+    <!-- 左：文档窄列 -->
+    <div class="doclist">
+      <div class="tools">
+        <input class="search" placeholder="🔍 搜文档标题…" />
+        <div class="tagbar">
+          <button class="on">全部</button>
+          <button>#agent</button><button>#踩坑</button><button>#面试</button>
+        </div>
+      </div>
+      <div class="items" id="items"></div>
+    </div>
+
+    <!-- 右：详情 -->
+    <div class="detail" id="detail">
+      <div class="dhead">
+        <span class="back" onclick="document.getElementById('kb').classList.remove('m-detail-on')">← 返回列表</span>
+        <h2 id="dTitle">—</h2>
+        <div class="sub" id="dSub"></div>
+        <div class="ops">
+          <button class="btn">✏️ 编辑</button>
+          <button class="btn ghost">🏷 标签</button>
+          <button class="btn ghost">↗ 新窗口打开</button>
+          <button class="btn danger">删除</button>
+        </div>
+      </div>
+      <div class="dbody" id="dBody"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+const docs = [
+  {
+    title: 'ch01-agent-harness.pdf', type: 'pdf', status: 'ready', size: '2.1 MB', tags: ['agent'],
+    sub: 'PDF · 2.1 MB · 32 页 · #agent',
+    body: 'pdf',
+    md: ''
+  },
+  {
+    title: 'Deep Agents 源码解读.md', type: 'md', status: 'ready', size: '15.9 KB', tags: ['agent', '源码'],
+    sub: 'Markdown · 15.9 KB · 昨天 · #agent #源码',
+    md: `
+      <h1>Deep Agents 源码解读</h1>
+      <blockquote>🌐 来源：[示例博客](https://example.com/deep-agents) · 抓取于 9-19 22:14</blockquote>
+      <h2>核心循环</h2>
+      <p>整个 harness 的骨架是一个「规划 → 行动 → 观察」的循环，规划器把目标拆成带依赖的任务图，执行器按拓扑序消费。</p>
+      <pre>const plan = await planner.decompose(goal)
+for (const task of topoSort(plan)) {
+  await executor.run(task, { context })
+}</pre>
+      <h2>三个值得抄的设计</h2>
+      <ul>
+        <li><b>上下文预算</b>：每个工具调用前显式估算 token 占用</li>
+        <li><b>失败即笔记</b>：错误不抛出，而是写入执行日志供规划器改道</li>
+        <li><b>工具面克制</b>：三个工具覆盖 90% 场景</li>
+      </ul>
+      <p class="dim">（以上为草图示例内容）</p>`
+  },
+  {
+    title: 'sqlite-vec 踩坑记录.md', type: 'md', status: 'ready', size: '78 B', tags: ['踩坑', 'sqlite'],
+    sub: 'Markdown · 78 B · 9-19 · #踩坑 #sqlite',
+    md: `
+      <h1>sqlite-vec 踩坑记录</h1>
+      <p>绑定式主键插入有 bug，改用 <b>rowid 方案</b>。</p>
+      <pre>INSERT INTO chunk_vec VALUES (${'{chunkId}'}, ?)</pre>`
+  },
+  {
+    title: '2-如何写出好的 Skill.pdf', type: 'pdf', status: 'ready', size: '1.4 MB', tags: ['面试'],
+    sub: 'PDF · 1.4 MB · 24 页 · #面试', body: 'pdf'
+  },
+  {
+    title: '扫描件_合同.pdf', type: 'pdf', status: 'failed', size: '4.8 MB', tags: [],
+    sub: 'PDF · 4.8 MB · 失败：无可抽取文本', body: ''
+  }
+];
+
+const items = document.getElementById('items');
+let current = 1;
+
+function statusChip(s) {
+  if (s === 'ready') return '<span class="dot ready" title="ready"></span>';
+  if (s === 'failed') return '<span class="dot failed" title="failed"></span>';
+  return '<span class="dot queued" title="queued"></span>';
+}
+
+function renderList() {
+  items.innerHTML = '';
+  docs.forEach((d, i) => {
+    const b = document.createElement('button');
+    b.className = 'item' + (i === current ? ' on' : '');
+    b.innerHTML = `
+      <div class="t">${d.title}</div>
+      <div class="meta">${statusChip(d.status)}
+        <span class="tg">${d.tags.map(t => '#' + t).join(' ') || '&nbsp;'}</span>
+        <span class="sz">${d.size}</span>
+      </div>`;
+    b.onclick = () => { current = i; renderList(); renderDetail(); };
+    items.appendChild(b);
+  });
+}
+
+function renderDetail() {
+  const d = docs[current];
+  document.getElementById('dTitle').textContent = d.title;
+  document.getElementById('dSub').innerHTML = `${statusChip(d.status)} <span>${d.sub}</span>`;
+  const body = document.getElementById('dBody');
+  if (d.body === 'pdf') {
+    body.innerHTML = `
+      <div class="pdfpane">
+        <div class="frame">📄</div>
+        <div class="pages"><button class="btn ghost small">‹ 上一页</button><b>第 1 / 32 页</b><button class="btn ghost small">下一页 ›</button></div>
+        <div class="muted">浏览器原生 PDF 预览 · 引用跳页 #page=N</div>
+      </div>`;
+    body.querySelector('.pdfpane').style.cssText = 'flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;color:var(--dim)';
+    return;
+  }
+  body.innerHTML = d.md || '<p class="dim" style="text-align:center;margin-top:60px">此文档暂无内容 ✦</p>';
+}
+
+renderList();
+renderDetail();
+
+// 移动端：点文档切详情
+items.addEventListener('click', () => {
+  if (window.matchMedia('(max-width: 760px)').matches) {
+    document.getElementById('kb').classList.add('m-detail-on');
+  }
+});
+document.querySelector('.back').onclick = () => document.getElementById('kb').classList.remove('m-detail-on');
+
+// 宽度预览切换（仅演示用）
+const app = document.getElementById('app');
+document.getElementById('wDesk').onclick = () => {
+  app.style.maxWidth = '100%'; app.style.margin = '0';
+  document.getElementById('wDesk').classList.add('on');
+  document.getElementById('wMob').classList.remove('on');
+};
+document.getElementById('wMob').onclick = () => {
+  app.style.maxWidth = '390px'; app.style.margin = '0 auto';
+  app.style.borderLeft = '1px solid var(--edge)'; app.style.borderRight = '1px solid var(--edge)';
+  document.getElementById('wMob').classList.add('on');
+  document.getElementById('wDesk').classList.remove('on');
+};
+</script>
+</body>
+</html>
