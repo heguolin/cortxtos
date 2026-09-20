@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
+
+const props = defineProps<{ readonly?: boolean }>()
 import { renderMarkdown } from '../markdown'
 import { fmtDbTime } from '../format'
 
@@ -291,7 +293,7 @@ async function removeSelected() {
       :class="[dragging ? 'border-neon' : 'border-edge', selectedId ? 'hidden md:flex' : 'flex']"
     >
       <!-- 快速捕获（文本 / 裸 URL） -->
-      <div class="border-b border-edge p-3">
+      <div v-if="!readonly" class="border-b border-edge p-3">
         <div class="flex items-center gap-1.5">
           <input
             v-model="captureText"
@@ -309,6 +311,7 @@ async function removeSelected() {
           </button>
         </div>
         <label
+          v-if="!readonly"
           class="mt-2 flex cursor-pointer items-center justify-center gap-1.5 rounded-lg border border-dashed px-2 py-1.5 text-xs transition"
           :class="dragging ? 'border-neon text-neon' : 'border-edge text-ink-dim hover:border-neon hover:text-neon'"
         >
@@ -421,10 +424,10 @@ async function removeSelected() {
               <button class="text-xs text-ink-dim" @click="editingTags = false">取消</button>
             </template>
             <template v-else>
-              <button v-if="isMd" class="rounded-lg bg-neon/20 px-3 py-1.5 text-xs font-semibold text-neon transition hover:bg-neon/30" @click="openEditor">
+              <button v-if="isMd && !readonly" class="rounded-lg bg-neon/20 px-3 py-1.5 text-xs font-semibold text-neon transition hover:bg-neon/30" @click="openEditor">
                 ✏️ 编辑
               </button>
-              <button class="rounded-lg border border-edge px-3 py-1.5 text-xs text-ink-dim transition hover:text-ink" @click="startEditTags">
+              <button v-if="!readonly" class="rounded-lg border border-edge px-3 py-1.5 text-xs text-ink-dim transition hover:text-ink" @click="startEditTags">
                 🏷 标签
               </button>
               <a
@@ -434,7 +437,7 @@ async function removeSelected() {
               >
                 ↗ 新窗口打开
               </a>
-              <button class="ml-auto text-xs text-ink-dim transition hover:text-red-400" @click="removeSelected">删除</button>
+              <button v-if="!readonly" class="ml-auto text-xs text-ink-dim transition hover:text-red-400" @click="removeSelected">删除</button>
             </template>
           </div>
         </div>

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 
-const emit = defineEmits<{ done: [] }>()
+const emit = defineEmits<{ done: []; guest: [] }>()
 
 const password = ref('')
 const error = ref('')
@@ -83,6 +83,13 @@ async function submit() {
         :disabled="busy || !password"
       >
         {{ busy ? '验证中…' : '进入工作台' }}
+      </button>
+      <button
+        type="button"
+        class="mt-3 w-full text-center text-xs text-ink-dim transition hover:text-neon-soft"
+        @click="emit('guest')"
+      >
+        游客浏览（只读）→
       </button>
     </form>
   </div>

@@ -15,6 +15,7 @@ interface BriefingDetail extends BriefingItem {
   finished_at: string | null
 }
 
+const props = defineProps<{ readonly?: boolean }>()
 const briefings = ref<BriefingItem[]>([])
 const detail = ref<BriefingDetail | null>(null)
 const generating = ref(false)
@@ -61,6 +62,7 @@ async function generate() {
         <p class="mt-1 text-xs text-ink-dim">每天定时扫描过去 24h 新增/变更文档，由 background 档模型生成</p>
       </div>
       <button
+        v-if="!props.readonly"
         class="rounded-lg bg-neon/20 px-4 py-2 text-sm font-semibold text-neon transition hover:bg-neon/30 disabled:opacity-50"
         :disabled="generating"
         @click="generate"

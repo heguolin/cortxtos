@@ -1,12 +1,6 @@
 import { Hono } from 'hono'
 import { z } from 'zod'
-import { getRun } from '../scheduler.js'
-import {
-  getJobByName,
-  type JobRow,
-  type JobSpec,
-  listRuns,
-} from '../scheduler.js'
+import { getJobByName, type JobRow, type JobSpec } from '../scheduler.js'
 import type { ServerDeps } from '../types.js'
 
 export type TaskStatus = 400 | 404 | 503
@@ -163,27 +157,6 @@ export function tasksRouter(deps: ServerDeps): Hono {
       )
       .all() as Array<{ id: number; job_title: string; job_name: string; status: string; started_at: string; finished_at: string | null; output: string | null; error: string | null }>
     return c.json({ runs: rows })
-  })
-
-  // ===== 简报（保持 M0 兼容） =====
-  r.get('/api/briefings', (c) => {
-    const job = getJobByName(deps.db, BRIEFING_JOB)
-    if (!job) return c.json({ briefings: [] })
-    const runs = listRuns(deps.db, job.id)
-    return c.json({
-      briefings: runs.map((run) => ({
-        id: run.id,
-        status: run.status,
-        started_at: run.started_at,
-        preview: (run.output ?? run.error ?? '').slice(0, 80),
-      })),
-    })
-  })
-
-  r.get('/api/briefings/:id', (c) => {
-    const run = getRun(deps.db, Number(c.req.param('id')))
-    if (!run) throw new BriefingError(404, '简报不存在')
-    return c.json({ briefing: run })
   })
 
   return r

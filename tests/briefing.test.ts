@@ -177,11 +177,14 @@ describe('调度器 + 每日简报', () => {
     expect(briefing.output).toContain('今日新增')
   })
 
-  it('未知任务 → 404；未登录 → 401', async () => {
+  it('未知任务 → 404；游客可读简报；写操作未登录 → 401', async () => {
     const { app, cookie } = await setup(true)
     const notFound = await app.request('/api/jobs/nope/run', { method: 'POST', headers: { cookie } })
     expect(notFound.status).toBe(404)
-    const unauthorized = await app.request('/api/briefings')
+    // 简报/任务管理是受保护端点；简报读取已公开（v2.4.3 游客可浏览）
+    const unauthorized = await app.request('/api/jobs')
     expect(unauthorized.status).toBe(401)
+    const publicRead = await app.request('/api/briefings')
+    expect(publicRead.status).toBe(200)
   })
 })

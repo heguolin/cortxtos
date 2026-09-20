@@ -4,6 +4,7 @@ import { Hono } from 'hono'
 import { serve } from '@hono/node-server'
 import { serveStatic } from '@hono/node-server/serve-static'
 import { publicAuthRouter } from './routes/auth.js'
+import { publicRouter } from './routes/public.js'
 import { authGuard, guardedRouter } from './routes/guarded.js'
 import { kbRouter } from './routes/kb.js'
 import { chatRouter } from './routes/chat.js'
@@ -37,8 +38,9 @@ export function createApp(deps: ServerDeps): Hono {
     return c.html(indexHtml(), 200, { 'cache-control': 'no-cache' })
   })
 
-  // 注册顺序即语义：公开认证路由 → /api/* 鉴权守卫 → 受保护 API → SPA 兜底
+  // 注册顺序即语义：公开认证路由 → 公开只读路由（游客可浏览）→ /api/* 鉴权守卫 → 受保护 API → SPA 兜底
   app.route('/', publicAuthRouter(deps))
+  app.route('/', publicRouter(deps))
   app.use('/api/*', authGuard(deps))
   app.route('/', guardedRouter(deps))
   app.route('/', kbRouter(deps))

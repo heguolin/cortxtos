@@ -4,15 +4,12 @@ import {
   deleteDocument,
   findDocumentByUrl,
   getDocument,
-  listDocuments,
   normalizeTags,
-  readDocumentFile,
   reindexAll,
   saveMarkdownEdit,
   setTags,
   uploadDocument,
 } from '../kb/service.js'
-import { hybridSearch } from '../kb/search.js'
 import {
   WebCaptureError,
   buildCaptureMarkdown,
@@ -22,14 +19,6 @@ import {
 import type { ServerDeps } from '../types.js'
 
 /** tags 列是 JSON 字符串，API 边界统一解析为数组（脏数据降级空数组） */
-function withTags<D extends { tags: string }>(doc: D): Omit<D, 'tags'> & { tags: string[] } {
-  try {
-    return { ...doc, tags: (JSON.parse(doc.tags || '[]') as string[]) ?? [] }
-  } catch {
-    return { ...doc, tags: [] }
-  }
-}
-
 export function kbRouter(deps: ServerDeps): Hono {
   const r = new Hono()
 
@@ -40,14 +29,6 @@ export function kbRouter(deps: ServerDeps): Hono {
     return c.json({ error: '内部错误' }, 500)
   })
 
-  r.get('/api/documents', (c) => {
-    const documents = listDocuments(deps.db, {
-      q: c.req.query('q'),
-      tag: c.req.query('tag'),
-    })
-    return c.json({ documents: documents.map(withTags) })
-  })
-
   // 打标签（v2.3 知识库组织）
   r.patch('/api/documents/:id/tags', async (c) => {
     const body = await c.req
@@ -55,7 +36,7 @@ export function kbRouter(deps: ServerDeps): Hono {
       .catch(() => ({}) as { tags?: unknown })
     const tags = normalizeTags(body.tags)
     const document = setTags(deps.db, Number(c.req.param('id')), tags)
-    return c.json({ document: withTags(document) })
+    return c.json({ document: { ...document, tags: JSON.parse(document.tags || '[]') as string[] } })
   })
 
   r.post('/api/documents', async (c) => {
@@ -68,24 +49,6 @@ export function kbRouter(deps: ServerDeps): Hono {
     const result = uploadDocument(deps.db, deps.vaultDir, { name: file.name, bytes })
     if (!result.duplicate) deps.indexer?.enqueue(result.document.id)
     return c.json(result, result.duplicate ? (200 as const) : (201 as const))
-  })
-
-  r.get('/api/documents/:id', (c) => {
-    const doc = getDocument(deps.db, Number(c.req.param('id')))
-    if (!doc) throw new KbError(404, '文档不存在')
-    return c.json({ document: doc })
-  })
-
-  // 原始文件：md 预览与 PDF 原生预览（票 06 引用跳转用）
-  r.get('/api/documents/:id/raw', (c) => {
-    const { document, bytes } = readDocumentFile(deps.db, deps.vaultDir, Number(c.req.param('id')))
-    return new Response(new Uint8Array(bytes), {
-      headers: {
-        'content-type': `${document.mime}; charset=utf-8`,
-        'content-disposition': `inline; filename*=UTF-8''${encodeURIComponent(document.title)}`,
-        'cache-control': 'no-store',
-      },
-    })
   })
 
   r.put('/api/documents/:id', async (c) => {
@@ -113,18 +76,6 @@ export function kbRouter(deps: ServerDeps): Hono {
     const count = reindexAll(deps.db, deps.vaultDir)
     deps.indexer.recover()
     return c.json({ ok: true, queued: count }, 202)
-  })
-
-  // 检索测试口（票 06 的对话固定管线复用同一函数）
-  r.get('/api/search', async (c) => {
-    const q = c.req.query('q')?.trim() ?? ''
-    if (!q) throw new KbError(400, '缺少 q 参数')
-    if (!deps.embedder) throw new KbError(503, '嵌入客户端未就绪（测试环境）')
-    const limit = Number(c.req.query('limit') ?? 6)
-    const hits = await hybridSearch(deps.db, deps.embedder, q, {
-      limit: Number.isFinite(limit) && limit > 0 ? Math.min(limit, 20) : 6,
-    })
-    return c.json({ hits })
   })
 
   // 快速捕获：裸 URL 走网页捕获管线（DESIGN §4.5）；纯文本/Markdown 直接入库（DESIGN v2.2），首行作标题
